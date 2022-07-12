@@ -17,6 +17,21 @@ from typing import List, Optional, TypedDict, TypeVar
 T = TypeVar("T")
 
 
+class Colors:
+    menu: int
+
+    def __init__(self):
+        idx = 0
+
+        def init_pair(fg: int, bg: int) -> int:
+            nonlocal idx
+            idx = idx + 1
+            curses.init_pair(idx, fg, bg)
+            return curses.color_pair(idx)
+
+        self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
+
+
 @dataclass
 class Message:
     msg_id: str
@@ -29,9 +44,10 @@ class Message:
 @dataclass
 class AppState:
     screen: "curses._CursesWindow"
-    index_window: "curses._CursesWindow"
+    colors: Colors
     messages: List[Message] = field(default_factory=list)
     selected_message: Optional[Message] = None
+    pager_visible: bool = False
 
 
 class HNSearchHit(TypedDict):
@@ -81,12 +97,10 @@ def app_load_messages(app: AppState, messages: List[Message]) -> None:
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cursor = "->" if message == app.selected_message else "  "
-    app.index_window.addstr(row, 0, f"{cursor} [{message.date}]  [{message.author[:10]:10}]  {message.title}")
+    app.screen.insstr(row, 0, f"{cursor} [{message.date}]  [{message.author[:10]:10}]  {message.title}")
 
 
-def app_render_index(app: AppState) -> None:
-    height = app.index_window.getmaxyx()[0]
-
+def app_render_index(app: AppState, top: int, height: int) -> None:
     offset = app.selected_message.index_position - height // 2 if app.selected_message else 0
     offset = min(offset, len(app.messages) - height)
     offset = max(offset, 0)
@@ -94,27 +108,35 @@ def app_render_index(app: AppState) -> None:
     rows_to_render = min(height, len(app.messages) - offset)
 
     for i in range(rows_to_render):
-        app_render_index_row(app, i, app.messages[i + offset])
+        app_render_index_row(app, i + top, app.messages[i + offset])
+
+
+def app_render_menus(app: AppState, index_top: int, index_bottom: int) -> None:
+    app.screen.insstr(index_top - 1, 0, "top menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(index_bottom + 1, 0, "index menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+
+    if app.pager_visible:
+        app.screen.insstr(curses.LINES - 1, 0, "pager menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
 
 
 def app_render(app: AppState) -> None:
     app.screen.erase()
 
-    app_render_index(app)
+    index_top = 1
+    index_bottom = ((curses.LINES - 2) // 3) if app.pager_visible else curses.LINES - 2
+    index_height = index_bottom - index_top + 1
+
+    app_render_index(app, index_top, index_height)
+    app_render_menus(app, index_top, index_bottom)
 
     app.screen.refresh()
 
 
-def app_adjust_size(app: AppState) -> None:
-    app.index_window.mvwin(1, 0)
-    app.index_window.resize((curses.LINES - 2) // 3, curses.COLS)
-
-
 def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
+    curses.use_default_colors()
 
-    app = AppState(screen=screen, index_window=screen.subwin(1, 0))
-    app_adjust_size(app)
+    app = AppState(screen=screen, colors=Colors())
     app_load_messages(app, hn_search_stories())
 
     return app
