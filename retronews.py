@@ -79,6 +79,20 @@ def cmd_down(app: AppState) -> None:
     app.selected_message = list_get(app.messages, pos, app.selected_message)
 
 
+def cmd_page_up(app: AppState) -> None:
+    index_height = app_get_index_height(app)
+    pos = app.selected_message.index_position - index_height if app.selected_message else 0
+    pos = max(pos, 0)
+    app.selected_message = list_get(app.messages, pos, app.selected_message)
+
+
+def cmd_page_down(app: AppState) -> None:
+    index_height = app_get_index_height(app)
+    pos = app.selected_message.index_position + index_height if app.selected_message else 0
+    pos = min(pos, len(app.messages) - 1)
+    app.selected_message = list_get(app.messages, pos, app.selected_message)
+
+
 def cmd_open(app: AppState) -> None:
     app.pager_visible = app.selected_message is not None
 
@@ -98,6 +112,8 @@ KEY_BINDINGS = {
     ord("x"): cmd_close,
     curses.KEY_UP: cmd_up,
     curses.KEY_DOWN: cmd_down,
+    curses.KEY_PPAGE: cmd_page_up,
+    curses.KEY_NPAGE: cmd_page_down,
 }
 
 
@@ -119,6 +135,10 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
     for i in range(height):
         line = list_get(message.lines, i) or ""
         app.screen.insstr(i + top, 0, line[: curses.COLS].ljust(curses.COLS))
+
+
+def app_get_index_height(app: AppState) -> int:
+    return ((curses.LINES - 2) // 3) if app.pager_visible else curses.LINES - 2
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
@@ -149,8 +169,8 @@ def app_render(app: AppState) -> None:
     app.screen.erase()
 
     index_top = 1
-    index_bottom = ((curses.LINES - 2) // 3) if app.pager_visible else curses.LINES - 2
-    index_height = index_bottom - index_top + 1
+    index_height = app_get_index_height(app)
+    index_bottom = index_top + index_height - 1
 
     app_render_menus(app, index_top, index_bottom)
     app_render_index(app, index_top, index_height)
