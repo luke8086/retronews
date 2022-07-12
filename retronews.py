@@ -12,6 +12,7 @@ import json
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
+from textwrap import wrap
 from typing import List, Optional, TypedDict, TypeVar
 
 T = TypeVar("T")
@@ -38,6 +39,7 @@ class Message:
     author: str
     title: str
     date: datetime
+    lines: List[str] = field(default_factory=list)
     index_position: int = 0
 
 
@@ -55,9 +57,11 @@ class HNSearchHit(TypedDict):
     author: str
     title: str
     created_at_i: int
+    story_text: Optional[str]
+    url: Optional[str]
 
 
-def list_get(lst: List[T], index: int, default: Optional[T]) -> Optional[T]:
+def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[T]:
     return lst[index] if 0 <= index < len(lst) else default
 
 
@@ -75,12 +79,23 @@ def cmd_down(app: AppState) -> None:
     app.selected_message = list_get(app.messages, pos, app.selected_message)
 
 
+def cmd_open(app: AppState) -> None:
+    app.pager_visible = app.selected_message is not None
+
+
+def cmd_close(app: AppState) -> None:
+    app.pager_visible = False
+
+
 def cmd_unknown(_: AppState) -> None:
     pass
 
 
 KEY_BINDINGS = {
     ord("q"): cmd_quit,
+    ord("\n"): cmd_open,
+    ord(" "): cmd_open,
+    ord("x"): cmd_close,
     curses.KEY_UP: cmd_up,
     curses.KEY_DOWN: cmd_down,
 }
@@ -93,6 +108,17 @@ def app_load_messages(app: AppState, messages: List[Message]) -> None:
 
     app.messages = messages
     app.selected_message = messages[0] if len(messages) > 0 else None
+
+
+def app_render_pager(app: AppState, top: int, height: int) -> None:
+    message = app.selected_message
+
+    if message is None:
+        return
+
+    for i in range(height):
+        line = list_get(message.lines, i) or ""
+        app.screen.insstr(i + top, 0, line[: curses.COLS].ljust(curses.COLS))
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
@@ -126,8 +152,13 @@ def app_render(app: AppState) -> None:
     index_bottom = ((curses.LINES - 2) // 3) if app.pager_visible else curses.LINES - 2
     index_height = index_bottom - index_top + 1
 
-    app_render_index(app, index_top, index_height)
     app_render_menus(app, index_top, index_bottom)
+    app_render_index(app, index_top, index_height)
+
+    if app.pager_visible:
+        pager_top = index_bottom + 2
+        pager_height = curses.LINES - pager_top - 1
+        app_render_pager(app, pager_top, pager_height)
 
     app.screen.refresh()
 
@@ -148,11 +179,12 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
         author=hit["author"],
         title=hit["title"],
         date=datetime.fromtimestamp(hit["created_at_i"]),
+        lines=wrap(hit["story_text"] or hit["url"] or "", 80),
     )
 
 
 def hn_search_stories() -> List[Message]:
-    hits: List[HNSearchHit] = json.load(open("./tmp/index.json"))["hits"]
+    hits: List[HNSearchHit] = json.load(open("./tmp/index.json"))["hits"] * 5
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
