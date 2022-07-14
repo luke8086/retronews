@@ -31,6 +31,9 @@ class Colors:
             return curses.color_pair(idx)
 
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
+        self.date = init_pair(curses.COLOR_CYAN, -1)
+        self.author = init_pair(curses.COLOR_YELLOW, -1)
+        self.cursor = init_pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
 
 
 @dataclass
@@ -142,8 +145,13 @@ def app_get_index_height(app: AppState) -> int:
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
-    cursor = "->" if message == app.selected_message else "  "
-    app.screen.insstr(row, 0, f"{cursor} [{message.date}]  [{message.author[:10]:10}]  {message.title}")
+    app.screen.addstr(row, 0, "[                ]  [          ]")
+    app.screen.addstr(row, 1, message.date.strftime("%Y-%m-%d %H:%M"), app.colors.date)
+    app.screen.addstr(row, 21, message.author[:10], app.colors.author)
+    app.screen.addstr(row, 34, message.title)
+
+    if message == app.selected_message:
+        app.screen.chgat(row, 0, curses.COLS, app.colors.cursor)
 
 
 def app_render_index(app: AppState, top: int, height: int) -> None:
