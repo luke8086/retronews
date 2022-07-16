@@ -17,6 +17,8 @@ from typing import List, Optional, TypedDict, TypeVar
 
 T = TypeVar("T")
 
+MENU_HEIGHT = 1
+
 
 class Colors:
     menu: int
@@ -53,6 +55,7 @@ class AppState:
     messages: List[Message] = field(default_factory=list)
     selected_message: Optional[Message] = None
     pager_visible: bool = False
+    flash: Optional[str] = None
 
 
 class HNSearchHit(TypedDict):
@@ -104,8 +107,8 @@ def cmd_close(app: AppState) -> None:
     app.pager_visible = False
 
 
-def cmd_unknown(_: AppState) -> None:
-    pass
+def cmd_unknown(app: AppState) -> None:
+    app.flash = "Unknown key"
 
 
 KEY_BINDINGS = {
@@ -141,7 +144,8 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
 
 
 def app_get_index_height(app: AppState) -> int:
-    return ((curses.LINES - 2) // 3) if app.pager_visible else curses.LINES - 2
+    max_height = curses.LINES - 3 * MENU_HEIGHT
+    return (max_height // 3) if app.pager_visible else max_height
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
@@ -154,7 +158,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
         app.screen.chgat(row, 0, curses.COLS, app.colors.cursor)
 
 
-def app_render_index(app: AppState, top: int, height: int) -> None:
+def app_render_index(app: AppState, height: int) -> None:
     offset = app.selected_message.index_position - height // 2 if app.selected_message else 0
     offset = min(offset, len(app.messages) - height)
     offset = max(offset, 0)
@@ -162,30 +166,35 @@ def app_render_index(app: AppState, top: int, height: int) -> None:
     rows_to_render = min(height, len(app.messages) - offset)
 
     for i in range(rows_to_render):
-        app_render_index_row(app, i + top, app.messages[i + offset])
+        app_render_index_row(app, MENU_HEIGHT + i, app.messages[i + offset])
 
 
-def app_render_menus(app: AppState, index_top: int, index_bottom: int) -> None:
-    app.screen.insstr(index_top - 1, 0, "top menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
-    app.screen.insstr(index_bottom + 1, 0, "index menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+def app_render_menus(app: AppState, index_height: int) -> None:
+    top_menu_row = 0
+    index_menu_row = MENU_HEIGHT + index_height
+    pager_menu_row = curses.LINES - 2 * MENU_HEIGHT
+    flash_menu_row = curses.LINES - MENU_HEIGHT
+
+    app.screen.insstr(top_menu_row, 0, "top menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(index_menu_row, 0, "index menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
 
     if app.pager_visible:
-        app.screen.insstr(curses.LINES - 1, 0, "pager menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+        app.screen.insstr(pager_menu_row, 0, "pager menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+
+    app.screen.addstr(flash_menu_row, 0, app.flash or "")
 
 
 def app_render(app: AppState) -> None:
     app.screen.erase()
 
-    index_top = 1
     index_height = app_get_index_height(app)
-    index_bottom = index_top + index_height - 1
 
-    app_render_menus(app, index_top, index_bottom)
-    app_render_index(app, index_top, index_height)
+    app_render_menus(app, index_height)
+    app_render_index(app, index_height)
 
     if app.pager_visible:
-        pager_top = index_bottom + 2
-        pager_height = curses.LINES - pager_top - 1
+        pager_top = index_height + 2 * MENU_HEIGHT
+        pager_height = curses.LINES - pager_top - 2 * MENU_HEIGHT
         app_render_pager(app, pager_top, pager_height)
 
     app.screen.refresh()
@@ -221,6 +230,7 @@ def main(screen: "curses._CursesWindow") -> None:
 
     while True:
         app_render(app)
+        app.flash = None
         c = app.screen.getch()
         KEY_BINDINGS.get(c, cmd_unknown)(app)
 
