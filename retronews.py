@@ -11,10 +11,11 @@ import curses
 import json
 import logging
 import sys
+import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from textwrap import wrap
-from typing import List, Optional, TypedDict, TypeVar
+from typing import Any, List, Optional, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -42,6 +43,7 @@ class Colors:
 @dataclass
 class Message:
     msg_id: str
+    story_id: str
     author: str
     title: str
     date: datetime
@@ -66,6 +68,28 @@ class HNSearchHit(TypedDict):
     created_at_i: int
     story_text: Optional[str]
     url: Optional[str]
+
+
+class HNEntry(TypedDict):
+    author: Optional[str]
+    # FIXME: Recursive declarations are not yet supported in TypedDicts
+    children: List[Any]
+    created_at_i: int
+    id: int
+    parent_id: Optional[int]
+    text: Optional[str]
+    title: Optional[str]
+    url: Optional[str]
+
+
+def fetch(url: str) -> str:
+    logging.debug(f"Fetching '{url}'...")
+
+    headers = {"User-Agent": "retronews"}
+    req = urllib.request.Request(url, headers=headers)
+    resp = urllib.request.urlopen(req).read().decode()
+
+    return resp
 
 
 def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[T]:
@@ -101,7 +125,13 @@ def cmd_page_down(app: AppState) -> None:
 
 
 def cmd_open(app: AppState) -> None:
-    app.pager_visible = app.selected_message is not None
+    if (msg := app.selected_message) is None:
+        return
+
+    if msg.msg_id == msg.story_id:
+        app_load_story(app, msg)
+
+    app.pager_visible = True
 
 
 def cmd_close(app: AppState) -> None:
@@ -131,6 +161,16 @@ def app_load_messages(app: AppState, messages: List[Message]) -> None:
 
     app.messages = messages
     app.selected_message = messages[0] if len(messages) > 0 else None
+
+
+def app_load_story(app: AppState, story_msg: Message) -> None:
+    source_id = story_msg.story_id.split("@")[0]
+
+    app.flash = f"Fetching story '{story_msg.story_id}'..."
+    app_render(app)
+
+    entry = hn_fetch_entry(source_id)
+    logging.debug(entry)
 
 
 def app_render_pager(app: AppState, top: int, height: int) -> None:
@@ -199,6 +239,7 @@ def app_render(app: AppState) -> None:
         app_render_pager(app, pager_top, pager_height)
 
     app.screen.refresh()
+    app.flash = ""
 
 
 def app_init_logging() -> None:
@@ -221,6 +262,7 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
 def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     return Message(
         msg_id=f"{hit['objectID']}@hn",
+        story_id=f"{hit['objectID']}@hn",
         author=hit["author"],
         title=hit["title"],
         date=datetime.fromtimestamp(hit["created_at_i"]),
@@ -233,12 +275,16 @@ def hn_search_stories() -> List[Message]:
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
+def hn_fetch_entry(entry_id: Union[str, int]) -> HNEntry:
+    resp = fetch(f"http://hn.algolia.com/api/v1/items/{entry_id}")
+    return json.loads(resp)
+
+
 def main(screen: "curses._CursesWindow") -> None:
     app = app_init(screen)
 
     while True:
         app_render(app)
-        app.flash = None
         c = app.screen.getch()
         KEY_BINDINGS.get(c, cmd_unknown)(app)
 
