@@ -9,6 +9,7 @@
 
 import curses
 import json
+import logging
 import sys
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -200,6 +201,13 @@ def app_render(app: AppState) -> None:
     app.screen.refresh()
 
 
+def app_init_logging() -> None:
+    format = "%(asctime)s %(levelname)s: %(message)s"
+    stream = open("tmp/retronews.log", "a")
+    logging.basicConfig(format=format, level="DEBUG", stream=stream)
+    logging.debug("Session started")
+
+
 def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
@@ -236,4 +244,5 @@ def main(screen: "curses._CursesWindow") -> None:
 
 
 if __name__ == "__main__":
+    app_init_logging()
     curses.wrapper(main)
