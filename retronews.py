@@ -15,7 +15,7 @@ import urllib.request
 from dataclasses import dataclass, field
 from datetime import datetime
 from textwrap import wrap
-from typing import Any, List, Optional, TypedDict, TypeVar, Union
+from typing import Any, Generator, List, Optional, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -37,6 +37,7 @@ class Colors:
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
         self.date = init_pair(curses.COLOR_CYAN, -1)
         self.author = init_pair(curses.COLOR_YELLOW, -1)
+        self.tree = init_pair(curses.COLOR_RED, -1)
         self.cursor = init_pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
 
 
@@ -48,7 +49,9 @@ class Message:
     title: str
     date: datetime
     lines: List[str] = field(default_factory=list)
+    children: List["Message"] = field(default_factory=list)
     index_position: int = 0
+    index_tree: str = ""
 
 
 @dataclass
@@ -129,13 +132,16 @@ def cmd_open(app: AppState) -> None:
         return
 
     if msg.msg_id == msg.story_id:
-        app_load_story(app, msg)
+        app_open_story(app, msg)
 
     app.pager_visible = True
 
 
 def cmd_close(app: AppState) -> None:
-    app.pager_visible = False
+    if app.pager_visible:
+        app.pager_visible = False
+    else:
+        app_close_story(app)
 
 
 def cmd_unknown(app: AppState) -> None:
@@ -154,23 +160,58 @@ KEY_BINDINGS = {
 }
 
 
-def app_load_messages(app: AppState, messages: List[Message]) -> None:
+def app_load_messages(app: AppState, messages: List[Message], selected_message_id: Optional[str] = None) -> None:
+    if selected_message_id is None and app.selected_message is not None:
+        selected_message_id = app.selected_message.msg_id
+
+    selected_message = None
+
     for i, message in enumerate(messages):
         message.index_position = i
-        message.title = f"{i} {message.title}"
+
+        if message.msg_id == selected_message_id:
+            selected_message = message
+
+    if selected_message is None and len(messages) > 0:
+        selected_message = messages[0]
 
     app.messages = messages
-    app.selected_message = messages[0] if len(messages) > 0 else None
+    app.selected_message = selected_message
 
 
-def app_load_story(app: AppState, story_msg: Message) -> None:
-    source_id = story_msg.story_id.split("@")[0]
+def app_close_story(app: AppState) -> None:
+    selected_story_id = app.selected_message.story_id if app.selected_message else None
+    filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.story_id]
+    app_load_messages(app, filtered_messages, selected_message_id=selected_story_id)
 
-    app.flash = f"Fetching story '{story_msg.story_id}'..."
+
+def app_open_story(app: AppState, story_message: Message) -> None:
+    source_id = story_message.story_id.split("@")[0]
+
+    app.flash = f"Fetching story '{story_message.story_id}'..."
     app_render(app)
 
-    entry = hn_fetch_entry(source_id)
-    logging.debug(entry)
+    new_story_message = hn_parse_entry(hn_fetch_entry(source_id))
+
+    app_close_story(app)
+
+    index_pos = story_message.index_position
+    story_messages = list(app_flatten_story(new_story_message, prefix="", is_last_child=False, is_top=True))
+    messages = app.messages[:index_pos] + story_messages + app.messages[index_pos + 1 :]  # noqa: E203
+
+    app_load_messages(app, messages, selected_message_id=story_message.msg_id)
+
+
+def app_flatten_story(msg: Message, prefix, is_last_child, is_top=False) -> Generator[Message, None, None]:
+    msg.index_tree = "" if is_top else f"{prefix}{'└─' if is_last_child else '├─'}> "
+    yield msg
+
+    children_count = len(msg.children)
+
+    for i, child_node in enumerate(msg.children):
+        tree_prefix = "" if is_top else f"{prefix}{'  ' if is_last_child else '│ '}"
+        for child in app_flatten_story(child_node, tree_prefix, i == children_count - 1):
+            yield child
 
 
 def app_render_pager(app: AppState, top: int, height: int) -> None:
@@ -193,7 +234,8 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     app.screen.addstr(row, 0, "[                ]  [          ]")
     app.screen.addstr(row, 1, message.date.strftime("%Y-%m-%d %H:%M"), app.colors.date)
     app.screen.addstr(row, 21, message.author[:10], app.colors.author)
-    app.screen.addstr(row, 34, message.title)
+    app.screen.addstr(row, 34, message.index_tree, app.colors.tree)
+    app.screen.addstr(row, 34 + len(message.index_tree), message.title)
 
     if message == app.selected_message:
         app.screen.chgat(row, 0, curses.COLS, app.colors.cursor)
@@ -270,8 +312,22 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     )
 
 
+def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -> Message:
+    story_id = story_id or str(entry["id"])
+
+    return Message(
+        msg_id=f"{entry['id']}@hn",
+        story_id=f"{story_id}@hn",
+        author=entry["author"] or "unknown",
+        title=entry["title"] or f"Re: {parent_title}",
+        date=datetime.fromtimestamp(entry["created_at_i"]),
+        lines=wrap(entry["text"] or entry["url"] or "", 80),
+        children=[hn_parse_entry(child, story_id, entry["title"] or parent_title) for child in entry["children"]],
+    )
+
+
 def hn_search_stories() -> List[Message]:
-    hits: List[HNSearchHit] = json.load(open("./tmp/index.json"))["hits"] * 5
+    hits: List[HNSearchHit] = json.load(open("./tmp/index.json"))["hits"]
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
