@@ -130,26 +130,26 @@ def cmd_quit(_: AppState):
 
 def cmd_up(app: AppState) -> None:
     pos = app.selected_message.index_position - 1 if app.selected_message else 0
-    app.selected_message = list_get(app.messages, pos, app.selected_message)
+    app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
 def cmd_down(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
-    app.selected_message = list_get(app.messages, pos, app.selected_message)
+    app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
 def cmd_page_up(app: AppState) -> None:
     index_height = app_get_index_height(app)
     pos = app.selected_message.index_position - index_height if app.selected_message else 0
     pos = max(pos, 0)
-    app.selected_message = list_get(app.messages, pos, app.selected_message)
+    app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
 def cmd_page_down(app: AppState) -> None:
     index_height = app_get_index_height(app)
     pos = app.selected_message.index_position + index_height if app.selected_message else 0
     pos = min(pos, len(app.messages) - 1)
-    app.selected_message = list_get(app.messages, pos, app.selected_message)
+    app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
 def cmd_open(app: AppState) -> None:
@@ -190,6 +190,13 @@ KEY_BINDINGS = {
 }
 
 
+def app_select_message(app: AppState, message: Optional[Message]) -> None:
+    app.selected_message = message
+
+    if message is None or not message.loaded:
+        app.pager_visible = False
+
+
 def app_load_messages(app: AppState, messages: List[Message], selected_message_id: Optional[str] = None) -> None:
     if selected_message_id is None and app.selected_message is not None:
         selected_message_id = app.selected_message.msg_id
@@ -206,7 +213,7 @@ def app_load_messages(app: AppState, messages: List[Message], selected_message_i
         selected_message = messages[0]
 
     app.messages = messages
-    app.selected_message = selected_message
+    app_select_message(app, selected_message)
 
 
 def app_close_story(app: AppState) -> None:
