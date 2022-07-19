@@ -8,6 +8,7 @@
 #
 
 import curses
+import html.parser
 import json
 import logging
 import sys
@@ -48,7 +49,9 @@ class Message:
     author: str
     title: str
     date: datetime
+    loaded: bool = False
     lines: List[str] = field(default_factory=list)
+    raw_lines: List[str] = field(default_factory=list)
     children: List["Message"] = field(default_factory=list)
     index_position: int = 0
     index_tree: str = ""
@@ -61,6 +64,7 @@ class AppState:
     messages: List[Message] = field(default_factory=list)
     selected_message: Optional[Message] = None
     pager_visible: bool = False
+    raw_mode: bool = False
     flash: Optional[str] = None
 
 
@@ -85,6 +89,19 @@ class HNEntry(TypedDict):
     url: Optional[str]
 
 
+class HTMLParser(html.parser.HTMLParser):
+    text: str = ""
+
+    def handle_data(self, data):
+        self.text += data
+
+    def handle_endtag(self, tag):
+        if tag == "br":
+            self.text += "\n"
+        elif tag == "p":
+            self.text += "\n\n"
+
+
 def fetch(url: str) -> str:
     logging.debug(f"Fetching '{url}'...")
 
@@ -93,6 +110,14 @@ def fetch(url: str) -> str:
     resp = urllib.request.urlopen(req).read().decode()
 
     return resp
+
+
+def parse_html(html: str) -> List[str]:
+    parser = HTMLParser()
+    parser.feed(html)
+    parser.close()
+
+    return wrap(parser.text.strip())
 
 
 def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[T]:
@@ -144,6 +169,10 @@ def cmd_close(app: AppState) -> None:
         app_close_story(app)
 
 
+def cmd_toggle_raw_mode(app: AppState) -> None:
+    app.raw_mode = not app.raw_mode
+
+
 def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
 
@@ -153,6 +182,7 @@ KEY_BINDINGS = {
     ord("\n"): cmd_open,
     ord(" "): cmd_open,
     ord("x"): cmd_close,
+    ord("r"): cmd_toggle_raw_mode,
     curses.KEY_UP: cmd_up,
     curses.KEY_DOWN: cmd_down,
     curses.KEY_PPAGE: cmd_page_up,
@@ -220,8 +250,10 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
     if message is None:
         return
 
+    lines = message.raw_lines if app.raw_mode else message.lines
+
     for i in range(height):
-        line = list_get(message.lines, i) or ""
+        line = list_get(lines, i) or ""
         app.screen.insstr(i + top, 0, line[: curses.COLS].ljust(curses.COLS))
 
 
@@ -308,12 +340,17 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
         author=hit["author"],
         title=hit["title"],
         date=datetime.fromtimestamp(hit["created_at_i"]),
-        lines=wrap(hit["story_text"] or hit["url"] or "", 80),
+        loaded=False,
+        lines=[],
+        raw_lines=[],
     )
 
 
 def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -> Message:
     story_id = story_id or str(entry["id"])
+
+    content = f"<p>{entry['url']}</p>" if entry["url"] else ""
+    content = f"{content}{entry['text']}" if entry["text"] else content
 
     return Message(
         msg_id=f"{entry['id']}@hn",
@@ -321,7 +358,9 @@ def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -
         author=entry["author"] or "unknown",
         title=entry["title"] or f"Re: {parent_title}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
-        lines=wrap(entry["text"] or entry["url"] or "", 80),
+        loaded=True,
+        lines=parse_html(content),
+        raw_lines=wrap(content),
         children=[hn_parse_entry(child, story_id, entry["title"] or parent_title) for child in entry["children"]],
     )
 
