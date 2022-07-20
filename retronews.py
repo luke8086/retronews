@@ -11,6 +11,7 @@ import curses
 import html.parser
 import json
 import logging
+import re
 import sys
 import urllib.request
 from dataclasses import dataclass, field
@@ -20,6 +21,7 @@ from typing import Any, Generator, List, Optional, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
+QUOTE_REX = re.compile(r"^(> ?)+")
 MENU_HEIGHT = 1
 
 
@@ -46,6 +48,7 @@ class Colors:
 class Message:
     msg_id: str
     story_id: str
+    content_location: str
     date: datetime
     author: str
     title: str
@@ -101,6 +104,24 @@ class HTMLParser(html.parser.HTMLParser):
             self.text += "\n\n"
 
 
+def parse_html(html: str) -> str:
+    parser = HTMLParser()
+    parser.feed(html)
+    parser.close()
+    return parser.text.strip()
+
+
+def wrap_paragraph(text: str) -> List[str]:
+    # Preserve empty lines
+    if len(text) == 0:
+        return [""]
+
+    # Preserve quotation symbols in subsequent lines
+    match = QUOTE_REX.match(text)
+    quote_symbols = match[0] if match else ""
+    return wrap(text, subsequent_indent=quote_symbols)
+
+
 def fetch(url: str) -> str:
     logging.debug(f"Fetching '{url}'...")
 
@@ -109,14 +130,6 @@ def fetch(url: str) -> str:
     resp = urllib.request.urlopen(req).read().decode()
 
     return resp
-
-
-def parse_html(html: str) -> List[str]:
-    parser = HTMLParser()
-    parser.feed(html)
-    parser.close()
-
-    return wrap(parser.text.strip())
 
 
 def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[T]:
@@ -197,7 +210,7 @@ def app_select_message(app: AppState, message: Optional[Message]) -> None:
         app.pager_visible = False
         return
 
-    message.lines = wrap(message.body) if app.raw_mode else parse_html(message.body)
+    message.lines = wrap(message.body) if app.raw_mode else msg_build_lines(message)
 
 
 def app_load_messages(app: AppState, messages: List[Message], selected_message_id: Optional[str] = None) -> None:
@@ -341,10 +354,28 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     return app
 
 
+def msg_build_lines(msg: Message) -> List[str]:
+    lines = [
+        f"Content-Location: {msg.content_location}",
+        f"Date: {msg.date.strftime('%Y-%m-%d %H:%M')}",
+        f"From: {msg.author}",
+        f"Subject: {msg.title}",
+        "",
+    ]
+
+    text = parse_html(msg.body or "")
+
+    for p in text.split("\n"):
+        lines += wrap_paragraph(p)
+
+    return lines
+
+
 def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     return Message(
         msg_id=f"{hit['objectID']}@hn",
         story_id=f"{hit['objectID']}@hn",
+        content_location=f"https://news.ycombinator.com/item?id={hit['objectID']}",
         date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
         title=hit["title"],
@@ -360,6 +391,7 @@ def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -
     return Message(
         msg_id=f"{entry['id']}@hn",
         story_id=f"{story_id}@hn",
+        content_location=f"https://news.ycombinator.com/item?id={entry['id']}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
         author=entry["author"] or "unknown",
         title=entry["title"] or f"Re: {parent_title}",
