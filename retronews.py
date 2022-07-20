@@ -46,12 +46,11 @@ class Colors:
 class Message:
     msg_id: str
     story_id: str
+    date: datetime
     author: str
     title: str
-    date: datetime
-    loaded: bool = False
+    body: Optional[str] = None
     lines: List[str] = field(default_factory=list)
-    raw_lines: List[str] = field(default_factory=list)
     children: List["Message"] = field(default_factory=list)
     index_position: int = 0
     index_tree: str = ""
@@ -171,6 +170,7 @@ def cmd_close(app: AppState) -> None:
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
     app.raw_mode = not app.raw_mode
+    app_select_message(app, app.selected_message)
 
 
 def cmd_unknown(app: AppState) -> None:
@@ -193,8 +193,11 @@ KEY_BINDINGS = {
 def app_select_message(app: AppState, message: Optional[Message]) -> None:
     app.selected_message = message
 
-    if message is None or not message.loaded:
+    if message is None or message.body is None:
         app.pager_visible = False
+        return
+
+    message.lines = wrap(message.body) if app.raw_mode else parse_html(message.body)
 
 
 def app_load_messages(app: AppState, messages: List[Message], selected_message_id: Optional[str] = None) -> None:
@@ -257,10 +260,8 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
     if message is None:
         return
 
-    lines = message.raw_lines if app.raw_mode else message.lines
-
     for i in range(height):
-        line = list_get(lines, i) or ""
+        line = list_get(message.lines, i) or ""
         app.screen.insstr(i + top, 0, line[: curses.COLS].ljust(curses.COLS))
 
 
@@ -344,30 +345,25 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     return Message(
         msg_id=f"{hit['objectID']}@hn",
         story_id=f"{hit['objectID']}@hn",
+        date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
         title=hit["title"],
-        date=datetime.fromtimestamp(hit["created_at_i"]),
-        loaded=False,
-        lines=[],
-        raw_lines=[],
     )
 
 
 def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -> Message:
     story_id = story_id or str(entry["id"])
 
-    content = f"<p>{entry['url']}</p>" if entry["url"] else ""
-    content = f"{content}{entry['text']}" if entry["text"] else content
+    body = f"<p>{entry['url']}</p>" if entry["url"] else ""
+    body = f"{body}{entry['text']}" if entry["text"] else body
 
     return Message(
         msg_id=f"{entry['id']}@hn",
         story_id=f"{story_id}@hn",
+        date=datetime.fromtimestamp(entry["created_at_i"]),
         author=entry["author"] or "unknown",
         title=entry["title"] or f"Re: {parent_title}",
-        date=datetime.fromtimestamp(entry["created_at_i"]),
-        loaded=True,
-        lines=parse_html(content),
-        raw_lines=wrap(content),
+        body=body,
         children=[hn_parse_entry(child, story_id, entry["title"] or parent_title) for child in entry["children"]],
     )
 
