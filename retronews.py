@@ -40,7 +40,12 @@ class Colors:
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
         self.date = init_pair(curses.COLOR_CYAN, -1)
         self.author = init_pair(curses.COLOR_YELLOW, -1)
+        self.subject = init_pair(curses.COLOR_GREEN, -1)
         self.tree = init_pair(curses.COLOR_RED, -1)
+        self.quote = init_pair(curses.COLOR_YELLOW, -1)
+        self.nested_quote = init_pair(curses.COLOR_BLUE, -1)
+        self.code = init_pair(curses.COLOR_GREEN, -1)
+        self.url = init_pair(curses.COLOR_MAGENTA, -1)
         self.cursor = init_pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
 
 
@@ -267,6 +272,37 @@ def app_flatten_story(msg: Message, prefix, is_last_child, is_top=False) -> Gene
             yield child
 
 
+def app_get_pager_line_attr(app: AppState, line: str) -> int:
+    if line.startswith("Content-Location: "):
+        return app.colors.tree
+    elif line.startswith("Date: "):
+        return app.colors.date
+    elif line.startswith("From: "):
+        return app.colors.author
+    elif line.startswith("Subject: "):
+        return app.colors.subject
+    elif line.startswith(">>") or line.startswith("> >"):
+        return app.colors.nested_quote
+    elif line.startswith(">"):
+        return app.colors.quote
+    elif line.startswith("  "):
+        return app.colors.code
+    else:
+        return 0
+
+
+def app_render_pager_line(app: AppState, row: int, line: str) -> None:
+    line_attr = app_get_pager_line_attr(app, line)
+
+    app.screen.move(row, 0)
+
+    for word in line.split(" "):
+        is_url = word.startswith("http://") or word.startswith("https://")
+        word_attr = app.colors.url if is_url and line_attr == 0 else line_attr
+        app.screen.addstr(word, word_attr)
+        app.screen.addstr(" ")
+
+
 def app_render_pager(app: AppState, top: int, height: int) -> None:
     message = app.selected_message
 
@@ -275,7 +311,7 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
 
     for i in range(height):
         line = list_get(message.lines, i) or ""
-        app.screen.insstr(i + top, 0, line)
+        app_render_pager_line(app, i + top, line)
 
 
 def app_get_index_height(app: AppState) -> int:
