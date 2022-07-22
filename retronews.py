@@ -286,15 +286,17 @@ def app_get_index_height(app: AppState) -> int:
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.screen.getmaxyx()[1]
+    date = message.date.strftime("%Y-%m-%d %H:%M")
+    author = message.author[:10].ljust(10)
 
-    app.screen.addstr(row, 0, "[                ]  [          ]")
-    app.screen.addstr(row, 1, message.date.strftime("%Y-%m-%d %H:%M"), app.colors.date)
-    app.screen.addstr(row, 21, message.author[:10], app.colors.author)
-    app.screen.addstr(row, 34, message.index_tree, app.colors.tree)
-    app.screen.addstr(row, 34 + len(message.index_tree), message.title)
+    app.screen.insstr(row, 0, f"[{date}]  [{author}]  {message.index_tree}{message.title}")
 
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
+    else:
+        app.screen.chgat(row, 1, 16, app.colors.date)
+        app.screen.chgat(row, 21, 10, app.colors.author)
+        app.screen.chgat(row, 34, len(message.index_tree), app.colors.tree)
 
 
 def app_render_index(app: AppState, height: int) -> None:
