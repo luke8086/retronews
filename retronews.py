@@ -124,7 +124,7 @@ def wrap_paragraph(text: str) -> List[str]:
     # Preserve quotation symbols in subsequent lines
     match = QUOTE_REX.match(text)
     quote_symbols = match[0] if match else ""
-    return wrap(text, subsequent_indent=quote_symbols)
+    return wrap(text, subsequent_indent=quote_symbols, break_on_hyphens=False, break_long_words=False)
 
 
 def fetch(url: str) -> str:
