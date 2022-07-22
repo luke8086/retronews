@@ -275,15 +275,18 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
 
     for i in range(height):
         line = list_get(message.lines, i) or ""
-        app.screen.insstr(i + top, 0, line[: curses.COLS].ljust(curses.COLS))
+        app.screen.insstr(i + top, 0, line)
 
 
 def app_get_index_height(app: AppState) -> int:
-    max_height = curses.LINES - 3 * MENU_HEIGHT
+    lines = app.screen.getmaxyx()[0]
+    max_height = lines - 3 * MENU_HEIGHT
     return (max_height // 3) if app.pager_visible else max_height
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
+    cols = app.screen.getmaxyx()[1]
+
     app.screen.addstr(row, 0, "[                ]  [          ]")
     app.screen.addstr(row, 1, message.date.strftime("%Y-%m-%d %H:%M"), app.colors.date)
     app.screen.addstr(row, 21, message.author[:10], app.colors.author)
@@ -291,7 +294,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     app.screen.addstr(row, 34 + len(message.index_tree), message.title)
 
     if message == app.selected_message:
-        app.screen.chgat(row, 0, curses.COLS, app.colors.cursor)
+        app.screen.chgat(row, 0, cols, app.colors.cursor)
 
 
 def app_render_index(app: AppState, height: int) -> None:
@@ -306,18 +309,19 @@ def app_render_index(app: AppState, height: int) -> None:
 
 
 def app_render_menus(app: AppState, index_height: int) -> None:
+    (lines, cols) = app.screen.getmaxyx()
     top_menu_row = 0
     index_menu_row = MENU_HEIGHT + index_height
-    pager_menu_row = curses.LINES - 2 * MENU_HEIGHT
-    flash_menu_row = curses.LINES - MENU_HEIGHT
+    pager_menu_row = lines - 2 * MENU_HEIGHT
+    flash_menu_row = lines - MENU_HEIGHT
 
-    app.screen.insstr(top_menu_row, 0, "top menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
-    app.screen.insstr(index_menu_row, 0, "index menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(top_menu_row, 0, "top menu".ljust(cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(index_menu_row, 0, "index menu".ljust(cols), app.colors.menu | curses.A_BOLD)
 
     if app.pager_visible:
-        app.screen.insstr(pager_menu_row, 0, "pager menu".ljust(curses.COLS), app.colors.menu | curses.A_BOLD)
+        app.screen.insstr(pager_menu_row, 0, "pager menu".ljust(cols), app.colors.menu | curses.A_BOLD)
 
-    app.screen.addstr(flash_menu_row, 0, app.flash or "")
+    app.screen.insstr(flash_menu_row, 0, app.flash or "")
 
 
 def app_render(app: AppState) -> None:
@@ -329,8 +333,9 @@ def app_render(app: AppState) -> None:
     app_render_index(app, index_height)
 
     if app.pager_visible:
+        lines = app.screen.getmaxyx()[0]
         pager_top = index_height + 2 * MENU_HEIGHT
-        pager_height = curses.LINES - pager_top - 2 * MENU_HEIGHT
+        pager_height = lines - pager_top - 2 * MENU_HEIGHT
         app_render_pager(app, pager_top, pager_height)
 
     app.screen.refresh()
