@@ -164,21 +164,27 @@ def cmd_quit(app: AppState):
 
 
 def cmd_up(app: AppState) -> None:
+    if app.pager_visible:
+        app.pager_offset = max(0, app.pager_offset - 1)
+    else:
+        cmd_index_up(app)
+
+
+def cmd_down(app: AppState) -> None:
+    if app.pager_visible:
+        app.pager_offset += 1
+    else:
+        cmd_index_down(app)
+
+
+def cmd_index_up(app: AppState) -> None:
     pos = app.selected_message.index_position - 1 if app.selected_message else 0
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
-def cmd_down(app: AppState) -> None:
+def cmd_index_down(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
-
-
-def cmd_pager_up(app: AppState) -> None:
-    app.pager_offset = max(0, app.pager_offset - 1)
-
-
-def cmd_pager_down(app: AppState) -> None:
-    app.pager_offset += 1
 
 
 def cmd_page_up(app: AppState) -> None:
@@ -234,10 +240,12 @@ KEY_BINDINGS = {
     ord("x"): cmd_close,
     ord("s"): cmd_star,
     ord("r"): cmd_toggle_raw_mode,
-    curses.KEY_UP: cmd_up,
-    curses.KEY_DOWN: cmd_down,
-    ord("k"): cmd_pager_up,
-    ord("j"): cmd_pager_down,
+    ord("k"): cmd_up,
+    ord("j"): cmd_down,
+    ord("p"): cmd_index_up,
+    ord("n"): cmd_index_down,
+    curses.KEY_UP: cmd_index_up,
+    curses.KEY_DOWN: cmd_index_down,
     curses.KEY_PPAGE: cmd_page_up,
     curses.KEY_NPAGE: cmd_page_down,
 }
@@ -462,7 +470,9 @@ def app_render_menus(app: AppState, index_height: int) -> None:
     pager_menu_row = lines - 2 * MENU_HEIGHT
     flash_menu_row = lines - MENU_HEIGHT
 
-    app.screen.insstr(top_menu_row, 0, "top menu".ljust(cols), app.colors.menu | curses.A_BOLD)
+    top_menu = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  r:Raw"
+
+    app.screen.insstr(top_menu_row, 0, top_menu[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
     app.screen.insstr(index_menu_row, 0, "index menu".ljust(cols), app.colors.menu | curses.A_BOLD)
 
     if app.pager_visible:
