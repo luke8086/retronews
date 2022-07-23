@@ -86,6 +86,7 @@ class AppState:
     messages_by_id: Dict[str, Message] = field(default_factory=dict)
     selected_message: Optional[Message] = None
     pager_visible: bool = False
+    pager_offset: int = 0
     raw_mode: bool = False
     flash: Optional[str] = None
 
@@ -172,6 +173,14 @@ def cmd_down(app: AppState) -> None:
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
+def cmd_pager_up(app: AppState) -> None:
+    app.pager_offset = max(0, app.pager_offset - 1)
+
+
+def cmd_pager_down(app: AppState) -> None:
+    app.pager_offset += 1
+
+
 def cmd_page_up(app: AppState) -> None:
     index_height = app_get_index_height(app)
     pos = app.selected_message.index_position - index_height if app.selected_message else 0
@@ -227,6 +236,8 @@ KEY_BINDINGS = {
     ord("r"): cmd_toggle_raw_mode,
     curses.KEY_UP: cmd_up,
     curses.KEY_DOWN: cmd_down,
+    ord("k"): cmd_pager_up,
+    ord("j"): cmd_pager_down,
     curses.KEY_PPAGE: cmd_page_up,
     curses.KEY_NPAGE: cmd_page_down,
 }
@@ -295,6 +306,8 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
         message.flags.read = True
         db_save_message(app.db, message)
         db_load_read_comments(app.db, {message.story_id: app.messages_by_id[message.story_id]})
+
+    app.pager_offset = 0
 
 
 def app_load_messages(
@@ -401,7 +414,7 @@ def app_render_pager(app: AppState, top: int, height: int) -> None:
         return
 
     for i in range(height):
-        line = list_get(message.lines, i) or ""
+        line = list_get(message.lines, i + app.pager_offset) or ""
         app_render_pager_line(app, i + top, line)
 
 
