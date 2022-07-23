@@ -19,7 +19,7 @@ import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from textwrap import wrap
-from typing import Any, Generator, List, Optional, TypedDict, TypeVar, Union
+from typing import Any, Dict, Generator, List, Optional, TypedDict, TypeVar, Union
 
 T = TypeVar("T")
 
@@ -71,6 +71,8 @@ class Message:
     lines: List[str] = field(default_factory=list)
     children: List["Message"] = field(default_factory=list)
     flags: MessageFlags = field(default_factory=MessageFlags)
+    read_comments: int = 0
+    total_comments: int = 0
     index_position: int = 0
     index_tree: str = ""
 
@@ -81,6 +83,7 @@ class AppState:
     colors: Colors
     db: sqlite3.Connection
     messages: List[Message] = field(default_factory=list)
+    messages_by_id: Dict[str, Message] = field(default_factory=dict)
     selected_message: Optional[Message] = None
     pager_visible: bool = False
     raw_mode: bool = False
@@ -94,6 +97,7 @@ class HNSearchHit(TypedDict):
     created_at_i: int
     story_text: Optional[str]
     url: Optional[str]
+    num_comments: int
 
 
 class HNEntry(TypedDict):
@@ -188,6 +192,8 @@ def cmd_open(app: AppState) -> None:
 
     if msg.msg_id == msg.story_id:
         app_open_story(app, msg)
+    else:
+        app_select_message(app, msg, show_pager=True)
 
 
 def cmd_close(app: AppState) -> None:
@@ -249,14 +255,28 @@ def db_save_message(db: sqlite3.Connection, message: Message) -> None:
     db.commit()
 
 
-def db_load_message_flags(db: sqlite3.Connection, messages: List[Message]) -> None:
-    messages_by_id = {msg.msg_id: msg for msg in messages}
+def db_load_message_flags(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
     message_ids = list(messages_by_id.keys())
     sql = f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in message_ids)})"
 
     for row in db.execute(sql, message_ids):
         flags = json.loads(row["flags"])
         messages_by_id[row["id"]].flags = MessageFlags(**flags)
+
+
+def db_load_read_comments(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
+    stories_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg.msg_id == msg.story_id}
+    story_ids = list(stories_by_id.keys())
+
+    sql = f"""
+        SELECT story_id, COUNT(*) AS count
+        FROM messages
+        WHERE story_id IN ({','.join('?' for _ in story_ids)}) AND JSON_EXTRACT(flags, '$.read')
+        GROUP BY story_id
+    """
+
+    for row in db.execute(sql, story_ids):
+        stories_by_id[row["story_id"]].read_comments = row["count"]
 
 
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
@@ -274,6 +294,7 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
     if app.pager_visible:
         message.flags.read = True
         db_save_message(app.db, message)
+        db_load_read_comments(app.db, {message.story_id: app.messages_by_id[message.story_id]})
 
 
 def app_load_messages(
@@ -283,8 +304,6 @@ def app_load_messages(
         selected_message_id = app.selected_message.msg_id
 
     selected_message = None
-
-    db_load_message_flags(app.db, messages)
 
     for i, message in enumerate(messages):
         message.index_position = i
@@ -296,12 +315,21 @@ def app_load_messages(
         selected_message = messages[0]
 
     app.messages = messages
+    app.messages_by_id = {msg.msg_id: msg for msg in messages}
+
+    db_load_message_flags(app.db, app.messages_by_id)
+    db_load_read_comments(app.db, app.messages_by_id)
+
     app_select_message(app, selected_message, show_pager)
 
 
 def app_close_story(app: AppState) -> None:
     selected_story_id = app.selected_message.story_id if app.selected_message else None
     filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.story_id]
+
+    for msg in filtered_messages:
+        msg.children = []
+
     app_load_messages(app, filtered_messages, selected_message_id=selected_story_id)
 
 
@@ -317,6 +345,7 @@ def app_open_story(app: AppState, story_message: Message) -> None:
 
     index_pos = story_message.index_position
     story_messages = list(app_flatten_story(new_story_message, prefix="", is_last_child=False, is_top=True))
+    new_story_message.total_comments = len(story_messages)
     messages = app.messages[:index_pos] + story_messages + app.messages[index_pos + 1 :]  # noqa: E203
 
     app_load_messages(app, messages, selected_message_id=story_message.msg_id, show_pager=True)
@@ -392,8 +421,9 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
+        is_read = message.flags.read and (len(message.children) > 0 or message.read_comments >= message.total_comments)
         subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
-        subject_attr = subject_attr if message.flags.read else subject_attr | curses.A_BOLD
+        subject_attr = subject_attr if is_read else subject_attr | curses.A_BOLD
 
         app.screen.chgat(row, 1, 16, app.colors.date)
         app.screen.chgat(row, 21, 10, app.colors.author)
@@ -490,6 +520,7 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
         date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
         title=hit["title"],
+        total_comments=hit["num_comments"] or 0,
     )
 
 
