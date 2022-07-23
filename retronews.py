@@ -222,6 +222,7 @@ def cmd_star(app: AppState) -> None:
     if (msg := app.selected_message) is not None:
         msg.flags.starred = not msg.flags.starred
         db_save_message(app.db, msg)
+        cmd_index_down(app)
 
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
