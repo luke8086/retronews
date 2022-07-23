@@ -24,7 +24,6 @@ from typing import Any, Dict, Generator, List, Optional, TypedDict, TypeVar, Uni
 T = TypeVar("T")
 
 QUOTE_REX = re.compile(r"^(> ?)+")
-MENU_HEIGHT = 1
 
 
 class Colors:
@@ -77,6 +76,20 @@ class Message:
     index_tree: str = ""
 
 
+@dataclass(frozen=True)
+class Layout:
+    lines: int = 0
+    cols: int = 0
+    top_menu_row: int = 0
+    index_start: int = 0
+    index_height: int = 0
+    index_menu_row: int = 0
+    pager_start: Optional[int] = None
+    pager_height: Optional[int] = None
+    pager_menu_row: Optional[int] = None
+    flash_menu_row: int = 0
+
+
 @dataclass
 class AppState:
     screen: "curses._CursesWindow"
@@ -85,6 +98,7 @@ class AppState:
     messages: List[Message] = field(default_factory=list)
     messages_by_id: Dict[str, Message] = field(default_factory=dict)
     selected_message: Optional[Message] = None
+    layout: Layout = field(default_factory=Layout)
     pager_visible: bool = False
     pager_offset: int = 0
     raw_mode: bool = False
@@ -188,15 +202,13 @@ def cmd_index_down(app: AppState) -> None:
 
 
 def cmd_page_up(app: AppState) -> None:
-    index_height = app_get_index_height(app)
-    pos = app.selected_message.index_position - index_height if app.selected_message else 0
+    pos = app.selected_message.index_position - app.layout.index_height if app.selected_message else 0
     pos = max(pos, 0)
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
 def cmd_page_down(app: AppState) -> None:
-    index_height = app_get_index_height(app)
-    pos = app.selected_message.index_position + index_height if app.selected_message else 0
+    pos = app.selected_message.index_position + app.layout.index_height if app.selected_message else 0
     pos = min(pos, len(app.messages) - 1)
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
@@ -416,25 +428,21 @@ def app_render_pager_line(app: AppState, row: int, line: str) -> None:
         app.screen.addstr(" ")
 
 
-def app_render_pager(app: AppState, top: int, height: int) -> None:
+def app_render_pager(app: AppState) -> None:
     message = app.selected_message
+    start = app.layout.pager_start
+    height = app.layout.pager_height
 
-    if message is None:
+    if message is None or start is None or height is None:
         return
 
     for i in range(height):
         line = list_get(message.lines, i + app.pager_offset) or ""
-        app_render_pager_line(app, i + top, line)
-
-
-def app_get_index_height(app: AppState) -> int:
-    lines = app.screen.getmaxyx()[0]
-    max_height = lines - 3 * MENU_HEIGHT
-    return (max_height // 3) if app.pager_visible else max_height
+        app_render_pager_line(app, i + start, line)
 
 
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
-    cols = app.screen.getmaxyx()[1]
+    cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
 
@@ -453,7 +461,9 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
         app.screen.chgat(row, 34 + len(message.index_tree), cols - 34 - len(message.index_tree), subject_attr)
 
 
-def app_render_index(app: AppState, height: int) -> None:
+def app_render_index(app: AppState) -> None:
+    height = app.layout.index_height
+
     offset = app.selected_message.index_position - height // 2 if app.selected_message else 0
     offset = min(offset, len(app.messages) - height)
     offset = max(offset, 0)
@@ -461,43 +471,68 @@ def app_render_index(app: AppState, height: int) -> None:
     rows_to_render = min(height, len(app.messages) - offset)
 
     for i in range(rows_to_render):
-        app_render_index_row(app, MENU_HEIGHT + i, app.messages[i + offset])
+        app_render_index_row(app, app.layout.index_start + i, app.messages[i + offset])
 
 
-def app_render_menus(app: AppState, index_height: int) -> None:
-    (lines, cols) = app.screen.getmaxyx()
-    top_menu_row = 0
-    index_menu_row = MENU_HEIGHT + index_height
-    pager_menu_row = lines - 2 * MENU_HEIGHT
-    flash_menu_row = lines - MENU_HEIGHT
+def app_render_menus(app: AppState) -> None:
+    lt = app.layout
 
     top_menu = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  r:Raw"
 
-    app.screen.insstr(top_menu_row, 0, top_menu[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
-    app.screen.insstr(index_menu_row, 0, "index menu".ljust(cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.top_menu_row, 0, top_menu[: lt.cols].ljust(lt.cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.index_menu_row, 0, "index menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
-    if app.pager_visible:
-        app.screen.insstr(pager_menu_row, 0, "pager menu".ljust(cols), app.colors.menu | curses.A_BOLD)
+    if lt.pager_menu_row is not None:
+        app.screen.insstr(lt.pager_menu_row, 0, "pager menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
-    app.screen.insstr(flash_menu_row, 0, app.flash or "")
+    app.screen.insstr(lt.flash_menu_row, 0, app.flash or "")
 
 
 def app_render(app: AppState) -> None:
+    app.layout = app_compute_layout(app)
     app.screen.erase()
 
-    index_height = app_get_index_height(app)
-
-    app_render_menus(app, index_height)
-    app_render_index(app, index_height)
+    app_render_menus(app)
+    app_render_index(app)
 
     if app.pager_visible:
-        lines = app.screen.getmaxyx()[0]
-        pager_top = index_height + 2 * MENU_HEIGHT
-        pager_height = lines - pager_top - 2 * MENU_HEIGHT
-        app_render_pager(app, pager_top, pager_height)
+        app_render_pager(app)
 
     app.screen.refresh()
     app.flash = ""
+
+
+def app_compute_layout(app: AppState) -> Layout:
+    (lines, cols) = app.screen.getmaxyx()
+
+    index_start = 1
+    max_index_height = lines - 3
+    index_height = (max_index_height // 3) if app.pager_visible else max_index_height
+    index_menu_row = index_start + index_height
+
+    if app.pager_visible:
+        pager_start = index_start + index_height + 1
+        pager_height = lines - pager_start - 2
+        pager_menu_row = lines - 2
+    else:
+        pager_start = None
+        pager_height = None
+        pager_menu_row = None
+
+    flash_menu_row = lines - 1
+
+    return Layout(
+        lines=lines,
+        cols=cols,
+        top_menu_row=0,
+        index_start=index_start,
+        index_height=index_height,
+        index_menu_row=index_menu_row,
+        pager_start=pager_start,
+        pager_height=pager_height,
+        pager_menu_row=pager_menu_row,
+        flash_menu_row=flash_menu_row,
+    )
 
 
 def app_init_logging() -> None:
