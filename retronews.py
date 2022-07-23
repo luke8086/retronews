@@ -37,16 +37,24 @@ class Colors:
             curses.init_pair(idx, fg, bg)
             return curses.color_pair(idx)
 
+        self.default = init_pair(curses.COLOR_WHITE, -1)
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
         self.date = init_pair(curses.COLOR_CYAN, -1)
         self.author = init_pair(curses.COLOR_YELLOW, -1)
         self.subject = init_pair(curses.COLOR_GREEN, -1)
+        self.starred_subject = init_pair(curses.COLOR_CYAN, -1)
         self.tree = init_pair(curses.COLOR_RED, -1)
         self.quote = init_pair(curses.COLOR_YELLOW, -1)
         self.nested_quote = init_pair(curses.COLOR_BLUE, -1)
         self.code = init_pair(curses.COLOR_GREEN, -1)
         self.url = init_pair(curses.COLOR_MAGENTA, -1)
         self.cursor = init_pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
+
+
+@dataclass
+class MessageFlags:
+    read: bool = False
+    starred: bool = False
 
 
 @dataclass
@@ -60,6 +68,7 @@ class Message:
     body: Optional[str] = None
     lines: List[str] = field(default_factory=list)
     children: List["Message"] = field(default_factory=list)
+    flags: MessageFlags = field(default_factory=MessageFlags)
     index_position: int = 0
     index_tree: str = ""
 
@@ -176,14 +185,17 @@ def cmd_open(app: AppState) -> None:
     if msg.msg_id == msg.story_id:
         app_open_story(app, msg)
 
-    app.pager_visible = True
-
 
 def cmd_close(app: AppState) -> None:
     if app.pager_visible:
         app.pager_visible = False
     else:
         app_close_story(app)
+
+
+def cmd_star(app: AppState) -> None:
+    if (msg := app.selected_message) is not None:
+        msg.flags.starred = not msg.flags.starred
 
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
@@ -200,6 +212,7 @@ KEY_BINDINGS = {
     ord("\n"): cmd_open,
     ord(" "): cmd_open,
     ord("x"): cmd_close,
+    ord("s"): cmd_star,
     ord("r"): cmd_toggle_raw_mode,
     curses.KEY_UP: cmd_up,
     curses.KEY_DOWN: cmd_down,
@@ -208,7 +221,7 @@ KEY_BINDINGS = {
 }
 
 
-def app_select_message(app: AppState, message: Optional[Message]) -> None:
+def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
     app.selected_message = message
 
     if message is None or message.body is None:
@@ -217,8 +230,16 @@ def app_select_message(app: AppState, message: Optional[Message]) -> None:
 
     message.lines = wrap(message.body) if app.raw_mode else msg_build_lines(message)
 
+    if show_pager:
+        app.pager_visible = True
 
-def app_load_messages(app: AppState, messages: List[Message], selected_message_id: Optional[str] = None) -> None:
+    if app.pager_visible:
+        message.flags.read = True
+
+
+def app_load_messages(
+    app: AppState, messages: List[Message], selected_message_id: Optional[str] = None, show_pager: bool = False
+) -> None:
     if selected_message_id is None and app.selected_message is not None:
         selected_message_id = app.selected_message.msg_id
 
@@ -234,7 +255,7 @@ def app_load_messages(app: AppState, messages: List[Message], selected_message_i
         selected_message = messages[0]
 
     app.messages = messages
-    app_select_message(app, selected_message)
+    app_select_message(app, selected_message, show_pager)
 
 
 def app_close_story(app: AppState) -> None:
@@ -257,7 +278,7 @@ def app_open_story(app: AppState, story_message: Message) -> None:
     story_messages = list(app_flatten_story(new_story_message, prefix="", is_last_child=False, is_top=True))
     messages = app.messages[:index_pos] + story_messages + app.messages[index_pos + 1 :]  # noqa: E203
 
-    app_load_messages(app, messages, selected_message_id=story_message.msg_id)
+    app_load_messages(app, messages, selected_message_id=story_message.msg_id, show_pager=True)
 
 
 def app_flatten_story(msg: Message, prefix, is_last_child, is_top=False) -> Generator[Message, None, None]:
@@ -330,9 +351,13 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
+        subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
+        subject_attr = subject_attr if message.flags.read else subject_attr | curses.A_BOLD
+
         app.screen.chgat(row, 1, 16, app.colors.date)
         app.screen.chgat(row, 21, 10, app.colors.author)
         app.screen.chgat(row, 34, len(message.index_tree), app.colors.tree)
+        app.screen.chgat(row, 34 + len(message.index_tree), cols - 34 - len(message.index_tree), subject_attr)
 
 
 def app_render_index(app: AppState, height: int) -> None:
