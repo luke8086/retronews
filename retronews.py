@@ -11,10 +11,12 @@ import curses
 import html.parser
 import json
 import logging
+import os
 import re
+import sqlite3
 import sys
 import urllib.request
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from textwrap import wrap
 from typing import Any, Generator, List, Optional, TypedDict, TypeVar, Union
@@ -77,6 +79,7 @@ class Message:
 class AppState:
     screen: "curses._CursesWindow"
     colors: Colors
+    db: sqlite3.Connection
     messages: List[Message] = field(default_factory=list)
     selected_message: Optional[Message] = None
     pager_visible: bool = False
@@ -150,7 +153,8 @@ def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[
     return lst[index] if 0 <= index < len(lst) else default
 
 
-def cmd_quit(_: AppState):
+def cmd_quit(app: AppState):
+    app.db.close()
     sys.exit(0)
 
 
@@ -196,6 +200,7 @@ def cmd_close(app: AppState) -> None:
 def cmd_star(app: AppState) -> None:
     if (msg := app.selected_message) is not None:
         msg.flags.starred = not msg.flags.starred
+        db_save_message(app.db, msg)
 
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
@@ -221,6 +226,39 @@ KEY_BINDINGS = {
 }
 
 
+def db_init() -> sqlite3.Connection:
+    path = os.path.expanduser("~/.retronews.db")
+    create_table_sql = """
+        CREATE TABLE IF NOT EXISTS messages (
+            id TEXT NOT NULL PRIMARY KEY,
+            story_id TEXT NOT NULL,
+            flags JSON NOT NULL)
+    """
+
+    db = sqlite3.connect(path)
+    db.row_factory = sqlite3.Row
+    db.execute(create_table_sql)
+    db.commit()
+
+    return db
+
+
+def db_save_message(db: sqlite3.Connection, message: Message) -> None:
+    sql = """INSERT OR REPLACE INTO messages (id, story_id, flags) VALUES (?, ?, ?)"""
+    db.execute(sql, (message.msg_id, message.story_id, json.dumps(asdict(message.flags))))
+    db.commit()
+
+
+def db_load_message_flags(db: sqlite3.Connection, messages: List[Message]) -> None:
+    messages_by_id = {msg.msg_id: msg for msg in messages}
+    message_ids = list(messages_by_id.keys())
+    sql = f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in message_ids)})"
+
+    for row in db.execute(sql, message_ids):
+        flags = json.loads(row["flags"])
+        messages_by_id[row["id"]].flags = MessageFlags(**flags)
+
+
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
     app.selected_message = message
 
@@ -235,6 +273,7 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
 
     if app.pager_visible:
         message.flags.read = True
+        db_save_message(app.db, message)
 
 
 def app_load_messages(
@@ -244,6 +283,8 @@ def app_load_messages(
         selected_message_id = app.selected_message.msg_id
 
     selected_message = None
+
+    db_load_message_flags(app.db, messages)
 
     for i, message in enumerate(messages):
         message.index_position = i
@@ -413,10 +454,12 @@ def app_init_logging() -> None:
 
 
 def app_init(screen: "curses._CursesWindow") -> AppState:
+    db = db_init()
+
     curses.curs_set(0)
     curses.use_default_colors()
 
-    app = AppState(screen=screen, colors=Colors())
+    app = AppState(screen=screen, colors=Colors(), db=db)
     app_load_messages(app, hn_search_stories())
 
     return app
