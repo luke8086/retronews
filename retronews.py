@@ -83,10 +83,10 @@ class Layout:
     top_menu_row: int = 0
     index_start: int = 0
     index_height: int = 0
-    index_menu_row: int = 0
+    middle_menu_row: Optional[int] = None
     pager_start: Optional[int] = None
     pager_height: Optional[int] = None
-    pager_menu_row: Optional[int] = None
+    bottom_menu_row: int = 0
     flash_menu_row: int = 0
 
 
@@ -480,11 +480,11 @@ def app_render_menus(app: AppState) -> None:
     top_menu = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  r:Raw"
 
     app.screen.insstr(lt.top_menu_row, 0, top_menu[: lt.cols].ljust(lt.cols), app.colors.menu | curses.A_BOLD)
-    app.screen.insstr(lt.index_menu_row, 0, "index menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
-    if lt.pager_menu_row is not None:
-        app.screen.insstr(lt.pager_menu_row, 0, "pager menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
+    if lt.middle_menu_row is not None:
+        app.screen.insstr(lt.middle_menu_row, 0, "middle menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
+    app.screen.insstr(lt.bottom_menu_row, 0, "bottom menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
     app.screen.insstr(lt.flash_menu_row, 0, app.flash or "")
 
 
@@ -508,18 +508,15 @@ def app_compute_layout(app: AppState) -> Layout:
     index_start = 1
     max_index_height = lines - 3
     index_height = (max_index_height // 3) if app.pager_visible else max_index_height
-    index_menu_row = index_start + index_height
 
     if app.pager_visible:
+        middle_menu_row = index_start + index_height
         pager_start = index_start + index_height + 1
         pager_height = lines - pager_start - 2
-        pager_menu_row = lines - 2
     else:
+        middle_menu_row = None
         pager_start = None
         pager_height = None
-        pager_menu_row = None
-
-    flash_menu_row = lines - 1
 
     return Layout(
         lines=lines,
@@ -527,11 +524,11 @@ def app_compute_layout(app: AppState) -> Layout:
         top_menu_row=0,
         index_start=index_start,
         index_height=index_height,
-        index_menu_row=index_menu_row,
+        middle_menu_row=middle_menu_row,
         pager_start=pager_start,
         pager_height=pager_height,
-        pager_menu_row=pager_menu_row,
-        flash_menu_row=flash_menu_row,
+        bottom_menu_row=lines - 2,
+        flash_menu_row=lines - 1,
     )
 
 
