@@ -42,6 +42,7 @@ class Colors:
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
         self.date = init_pair(curses.COLOR_CYAN, -1)
         self.author = init_pair(curses.COLOR_YELLOW, -1)
+        self.unread_comments = init_pair(curses.COLOR_GREEN, -1)
         self.subject = init_pair(curses.COLOR_GREEN, -1)
         self.starred_subject = init_pair(curses.COLOR_CYAN, -1)
         self.tree = init_pair(curses.COLOR_RED, -1)
@@ -445,8 +446,13 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
+    unread = (
+        str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
+        if message.msg_id == message.story_id
+        else "    "
+    )
 
-    app.screen.insstr(row, 0, f"[{date}]  [{author}]  {message.index_tree}{message.title}")
+    app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{message.title}")
 
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
@@ -457,8 +463,9 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
 
         app.screen.chgat(row, 1, 16, app.colors.date)
         app.screen.chgat(row, 21, 10, app.colors.author)
-        app.screen.chgat(row, 34, len(message.index_tree), app.colors.tree)
-        app.screen.chgat(row, 34 + len(message.index_tree), cols - 34 - len(message.index_tree), subject_attr)
+        app.screen.chgat(row, 35, 4, app.colors.unread_comments)
+        app.screen.chgat(row, 42, len(message.index_tree), app.colors.tree)
+        app.screen.chgat(row, 42 + len(message.index_tree), cols - 42 - len(message.index_tree), subject_attr)
 
 
 def app_render_index(app: AppState) -> None:
