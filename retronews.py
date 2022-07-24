@@ -301,6 +301,8 @@ KEY_BINDINGS = {
 
 KEY_BINDINGS.update({ord(c): partial(cmd_load_stories_page, sp=sp) for c, sp in STORIES_PAGE_TABS.items()})
 
+KEY_BINDINGS_HELP = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  <:PPage  >:NPage"
+
 
 def db_init() -> sqlite3.Connection:
     path = os.path.expanduser("~/.retronews.db")
@@ -544,9 +546,7 @@ def app_render_bottom_menu(app: AppState) -> None:
 def app_render_menus(app: AppState) -> None:
     lt = app.layout
 
-    top_menu = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  r:Raw"
-
-    app.screen.insstr(lt.top_menu_row, 0, top_menu[: lt.cols].ljust(lt.cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.top_menu_row, 0, KEY_BINDINGS_HELP[: lt.cols].ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
     if lt.middle_menu_row is not None:
         app.screen.insstr(lt.middle_menu_row, 0, "middle menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
