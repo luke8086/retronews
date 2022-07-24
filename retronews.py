@@ -190,17 +190,11 @@ def cmd_quit(app: AppState):
 
 
 def cmd_up(app: AppState) -> None:
-    if app.pager_visible:
-        app.pager_offset = max(0, app.pager_offset - 1)
-    else:
-        cmd_index_up(app)
+    cmd_pager_up(app) if app.pager_visible else cmd_index_up(app)
 
 
 def cmd_down(app: AppState) -> None:
-    if app.pager_visible:
-        app.pager_offset += 1
-    else:
-        cmd_index_down(app)
+    cmd_pager_down(app) if app.pager_visible else cmd_index_down(app)
 
 
 def cmd_index_up(app: AppState) -> None:
@@ -213,16 +207,43 @@ def cmd_index_down(app: AppState) -> None:
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
+def cmd_pager_up(app: AppState) -> None:
+    app.pager_offset = max(0, app.pager_offset - 1)
+
+
+def cmd_pager_down(app: AppState) -> None:
+    if app.selected_message is not None and app.layout.pager_height is not None:
+        app.pager_offset = min(app.pager_offset + 1, max(0, len(app.selected_message.lines) - app.layout.pager_height))
+
+
 def cmd_page_up(app: AppState) -> None:
+    cmd_pager_page_up(app) if app.pager_visible else cmd_index_page_up(app)
+
+
+def cmd_page_down(app: AppState) -> None:
+    cmd_pager_page_down(app) if app.pager_visible else cmd_index_page_down(app)
+
+
+def cmd_index_page_up(app: AppState) -> None:
     pos = app.selected_message.index_position - app.layout.index_height if app.selected_message else 0
     pos = max(pos, 0)
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
-def cmd_page_down(app: AppState) -> None:
+def cmd_index_page_down(app: AppState) -> None:
     pos = app.selected_message.index_position + app.layout.index_height if app.selected_message else 0
     pos = min(pos, len(app.messages) - 1)
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
+
+
+def cmd_pager_page_up(app: AppState) -> None:
+    if app.layout.pager_height is not None:
+        app.pager_offset = max(0, app.pager_offset - app.layout.pager_height)
+
+
+def cmd_pager_page_down(app: AppState) -> None:
+    if (message := app.selected_message) is not None and (pager_height := app.layout.pager_height) is not None:
+        app.pager_offset = min(app.pager_offset + pager_height, max(0, len(message.lines) - pager_height))
 
 
 def cmd_load_stories_page(app: AppState, sp: StoriesPage) -> None:
