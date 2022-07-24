@@ -18,6 +18,7 @@ import sys
 import urllib.request
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
+from functools import partial
 from textwrap import wrap
 from typing import Any, Dict, Generator, List, Optional, TypedDict, TypeVar, Union
 
@@ -40,6 +41,7 @@ class Colors:
 
         self.default = init_pair(curses.COLOR_WHITE, -1)
         self.menu = init_pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
+        self.menu_active = init_pair(curses.COLOR_YELLOW, curses.COLOR_BLUE)
         self.date = init_pair(curses.COLOR_CYAN, -1)
         self.author = init_pair(curses.COLOR_YELLOW, -1)
         self.unread_comments = init_pair(curses.COLOR_GREEN, -1)
@@ -82,6 +84,7 @@ class StoriesPage:
     backend: str
     group: str
     page: int = 1
+    title: str = ""
 
 
 @dataclass(frozen=True)
@@ -222,6 +225,21 @@ def cmd_page_down(app: AppState) -> None:
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
+def cmd_load_stories_page(app: AppState, sp: StoriesPage) -> None:
+    app.stories_page = sp
+    app_load_stories_page(app)
+
+
+def cmd_load_prev_stories_page(app: AppState) -> None:
+    app.stories_page.page = max(1, app.stories_page.page - 1)
+    app_load_stories_page(app)
+
+
+def cmd_load_next_stories_page(app: AppState) -> None:
+    app.stories_page.page += 1
+    app_load_stories_page(app)
+
+
 def cmd_open(app: AppState) -> None:
     if (msg := app.selected_message) is None:
         return
@@ -255,6 +273,13 @@ def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
 
 
+STORIES_PAGE_TABS = {
+    "1": StoriesPage(backend="hn", group="news", title="Front Page"),
+    "2": StoriesPage(backend="hn", group="newest", title="New"),
+    "3": StoriesPage(backend="hn", group="ask", title="Ask HN"),
+    "4": StoriesPage(backend="hn", group="show", title="Show HN"),
+}
+
 KEY_BINDINGS = {
     ord("q"): cmd_quit,
     ord("\n"): cmd_open,
@@ -266,11 +291,15 @@ KEY_BINDINGS = {
     ord("j"): cmd_down,
     ord("p"): cmd_index_up,
     ord("n"): cmd_index_down,
+    ord("<"): cmd_load_prev_stories_page,
+    ord(">"): cmd_load_next_stories_page,
     curses.KEY_UP: cmd_index_up,
     curses.KEY_DOWN: cmd_index_down,
     curses.KEY_PPAGE: cmd_page_up,
     curses.KEY_NPAGE: cmd_page_down,
 }
+
+KEY_BINDINGS.update({ord(c): partial(cmd_load_stories_page, sp=sp) for c, sp in STORIES_PAGE_TABS.items()})
 
 
 def db_init() -> sqlite3.Connection:
@@ -495,6 +524,23 @@ def app_render_index(app: AppState) -> None:
         app_render_index_row(app, app.layout.index_start + i, app.messages[i + offset])
 
 
+def app_render_bottom_menu(app: AppState) -> None:
+    lt = app.layout
+
+    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
+    app.screen.move(lt.bottom_menu_row, 0)
+
+    for (key, sp) in STORIES_PAGE_TABS.items():
+        attr = app.colors.menu | curses.A_BOLD
+        text = f"{key}:{sp.title}"
+
+        if sp.backend == app.stories_page.backend and sp.group == app.stories_page.group:
+            attr = app.colors.menu_active | curses.A_BOLD
+            text = f"{text} ({app.stories_page.page})"
+
+        app.screen.addstr(f"{text}  ", attr)
+
+
 def app_render_menus(app: AppState) -> None:
     lt = app.layout
 
@@ -505,7 +551,6 @@ def app_render_menus(app: AppState) -> None:
     if lt.middle_menu_row is not None:
         app.screen.insstr(lt.middle_menu_row, 0, "middle menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
 
-    app.screen.insstr(lt.bottom_menu_row, 0, "bottom menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
     app.screen.insstr(lt.flash_menu_row, 0, app.flash or "")
 
 
@@ -513,11 +558,13 @@ def app_render(app: AppState) -> None:
     app.layout = app_compute_layout(app)
     app.screen.erase()
 
-    app_render_menus(app)
     app_render_index(app)
 
     if app.pager_visible:
         app_render_pager(app)
+
+    app_render_menus(app)
+    app_render_bottom_menu(app)
 
     app.screen.refresh()
     app.flash = ""
