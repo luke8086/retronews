@@ -77,6 +77,13 @@ class Message:
     index_tree: str = ""
 
 
+@dataclass
+class StoriesPage:
+    backend: str
+    group: str
+    page: int = 1
+
+
 @dataclass(frozen=True)
 class Layout:
     lines: int = 0
@@ -96,6 +103,7 @@ class AppState:
     screen: "curses._CursesWindow"
     colors: Colors
     db: sqlite3.Connection
+    stories_page: StoriesPage
     messages: List[Message] = field(default_factory=list)
     messages_by_id: Dict[str, Message] = field(default_factory=dict)
     selected_message: Optional[Message] = None
@@ -358,6 +366,14 @@ def app_load_messages(
     app_select_message(app, selected_message, show_pager)
 
 
+def app_load_stories_page(app: AppState) -> None:
+    app.flash = "Fetching stories..."
+    app_render(app)
+
+    messages = backend_search_stories(app.stories_page)
+    app_load_messages(app, messages)
+
+
 def app_close_story(app: AppState) -> None:
     selected_story_id = app.selected_message.story_id if app.selected_message else None
     filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.story_id]
@@ -369,12 +385,10 @@ def app_close_story(app: AppState) -> None:
 
 
 def app_open_story(app: AppState, story_message: Message) -> None:
-    source_id = story_message.story_id.split("@")[0]
-
     app.flash = f"Fetching story '{story_message.story_id}'..."
     app_render(app)
 
-    new_story_message = hn_parse_entry(hn_fetch_entry(source_id))
+    new_story_message = backend_fetch_story(story_message.story_id)
 
     app_close_story(app)
 
@@ -552,8 +566,10 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
-    app = AppState(screen=screen, colors=Colors(), db=db)
-    app_load_messages(app, hn_search_stories())
+    stories_page = StoriesPage(backend="hn", group="news", page=1)
+
+    app = AppState(screen=screen, colors=Colors(), db=db, stories_page=stories_page)
+    app_load_stories_page(app)
 
     return app
 
@@ -605,14 +621,32 @@ def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -
     )
 
 
-def hn_search_stories() -> List[Message]:
-    hits: List[HNSearchHit] = json.load(open("./tmp/index.json"))["hits"]
+def hn_search_stories(group: str = "news", page: int = 1) -> List[Message]:
+    rex = re.compile(r'href="item\?id=(\d+)"')
+
+    html = fetch(f"https://news.ycombinator.com/{group}?p={page}")
+    story_ids = set(match.group(1) for match in rex.finditer(html))
+
+    story_tags = ",".join(f"story_{x}" for x in story_ids)
+    url = f"https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=200&tags=story,({story_tags})"
+    hits = json.loads(fetch(url))["hits"]
+
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
-def hn_fetch_entry(entry_id: Union[str, int]) -> HNEntry:
+def hn_fetch_story(entry_id: Union[str, int]) -> Message:
     resp = fetch(f"http://hn.algolia.com/api/v1/items/{entry_id}")
-    return json.loads(resp)
+    entry: HNEntry = json.loads(resp)
+    return hn_parse_entry(entry)
+
+
+def backend_search_stories(sp: StoriesPage) -> List[Message]:
+    return {"hn": hn_search_stories}[sp.backend](sp.group, sp.page)
+
+
+def backend_fetch_story(story_id: str) -> Message:
+    (source_id, backend) = story_id.split("@")
+    return {"hn": hn_fetch_story}[backend](source_id)
 
 
 def main(screen: "curses._CursesWindow") -> None:
