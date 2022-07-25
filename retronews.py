@@ -234,6 +234,15 @@ def cmd_index_down(app: AppState) -> None:
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
+def cmd_index_next_unread(app: AppState) -> None:
+    pos = app.selected_message.index_position + 1 if app.selected_message else 0
+
+    for message in app.messages[pos:]:
+        if not message.flags.read:
+            app_select_message(app, message)
+            break
+
+
 def cmd_pager_up(app: AppState) -> None:
     app.pager_offset = max(0, app.pager_offset - 1)
 
@@ -339,6 +348,7 @@ KEY_BINDINGS = {
     ord("j"): cmd_down,
     ord("p"): cmd_index_up,
     ord("n"): cmd_index_down,
+    ord("N"): cmd_index_next_unread,
     ord("<"): cmd_load_prev_stories_page,
     ord(">"): cmd_load_next_stories_page,
     curses.KEY_UP: cmd_index_up,
@@ -349,7 +359,7 @@ KEY_BINDINGS = {
 
 KEY_BINDINGS.update({ord(c): partial(cmd_load_stories_page, sp=sp) for c, sp in STORIES_PAGE_TABS.items()})
 
-KEY_BINDINGS_HELP = "q:Quit  n:Next  p:Prev  j:Down  k:Up  <space>:Open  x:Close  s:Star  <:PPage  >:NPage"
+KEY_BINDINGS_HELP = "q:Quit  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star  >:Next-Pg"
 
 
 def db_init() -> sqlite3.Connection:
