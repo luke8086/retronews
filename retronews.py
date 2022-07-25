@@ -563,13 +563,16 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
+    is_response = message.title.startswith("Re:") and message.msg_id != message.story_id
+    title = "" if is_response and row > app.layout.index_start else message.title
+
     unread = (
         str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
         if message.msg_id == message.story_id
         else "    "
     )
 
-    app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{message.title}")
+    app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
 
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
