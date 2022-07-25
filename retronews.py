@@ -611,6 +611,31 @@ def app_render_index(app: AppState) -> None:
         app_render_index_row(app, app.layout.index_start + i, app.messages[i + offset])
 
 
+def app_render_top_menu(app: AppState) -> None:
+    lt = app.layout
+    cols = lt.cols
+    app.screen.insstr(lt.top_menu_row, 0, KEY_BINDINGS_HELP[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
+
+
+def app_render_middle_menu(app: AppState) -> None:
+    if (row := app.layout.middle_menu_row) is None:
+        return
+
+    if (message := app.selected_message) is None:
+        return
+
+    if (story_message := app.messages_by_id.get(message.story_id)) is None:
+        return
+
+    cols = app.layout.cols
+    total = story_message.total_comments
+    unread = total - story_message.read_comments
+
+    text = f"--({unread}/{total} unread)--"[:cols].ljust(cols, "-")
+
+    app.screen.insstr(row, 0, text, app.colors.menu | curses.A_BOLD)
+
+
 def app_render_bottom_menu(app: AppState) -> None:
     lt = app.layout
 
@@ -626,17 +651,6 @@ def app_render_bottom_menu(app: AppState) -> None:
             text = f"{text} ({app.stories_page.page})"
 
         app.screen.addstr(f"{text}  ", attr)
-
-
-def app_render_menus(app: AppState) -> None:
-    lt = app.layout
-
-    app.screen.insstr(lt.top_menu_row, 0, KEY_BINDINGS_HELP[: lt.cols].ljust(lt.cols), app.colors.menu | curses.A_BOLD)
-
-    if lt.middle_menu_row is not None:
-        app.screen.insstr(lt.middle_menu_row, 0, "middle menu".ljust(lt.cols), app.colors.menu | curses.A_BOLD)
-
-    app.screen.insstr(lt.flash_menu_row, 0, app.flash or "")
 
 
 def app_update_layout(app: AppState) -> None:
@@ -664,8 +678,10 @@ def app_render(app: AppState) -> None:
     if app.pager_visible:
         app_render_pager(app)
 
-    app_render_menus(app)
+    app_render_top_menu(app)
+    app_render_middle_menu(app)
     app_render_bottom_menu(app)
+    app.screen.insstr(app.layout.flash_menu_row, 0, app.flash or "")
 
     app.screen.refresh()
 
