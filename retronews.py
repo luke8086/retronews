@@ -20,7 +20,17 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 from textwrap import wrap
-from typing import Any, Dict, Generator, List, Optional, TypedDict, TypeVar, Union
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    Generator,
+    List,
+    Optional,
+    TypedDict,
+    TypeVar,
+    Union,
+)
 
 T = TypeVar("T")
 
@@ -311,7 +321,7 @@ def cmd_unknown(app: AppState) -> None:
 
 STORIES_PAGE_TABS = {
     "1": StoriesPage(backend="hn", group="news", title="Front Page"),
-    "2": StoriesPage(backend="hn", group="newest", title="New"),
+    "2": StoriesPage(backend="hn-new", group="", title="New"),
     "3": StoriesPage(backend="hn", group="ask", title="Ask HN"),
     "4": StoriesPage(backend="hn", group="show", title="Show HN"),
 }
@@ -717,6 +727,13 @@ def hn_search_stories(group: str = "news", page: int = 1) -> List[Message]:
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
+def hn_search_new_stories(_: str, page: int = 1) -> List[Message]:
+    url = f"https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30&page={page}"
+    hits = json.loads(fetch(url))["hits"]
+
+    return [hn_parse_search_hit(hit) for hit in hits]
+
+
 def hn_fetch_story(entry_id: Union[str, int]) -> Message:
     resp = fetch(f"http://hn.algolia.com/api/v1/items/{entry_id}")
     entry: HNEntry = json.loads(resp)
@@ -724,7 +741,12 @@ def hn_fetch_story(entry_id: Union[str, int]) -> Message:
 
 
 def backend_search_stories(sp: StoriesPage) -> List[Message]:
-    return {"hn": hn_search_stories}[sp.backend](sp.group, sp.page)
+    searchers: Dict[str, Callable[[str, int], List[Message]]] = {
+        "hn": hn_search_stories,
+        "hn-new": hn_search_new_stories,
+    }
+    searcher = searchers[sp.backend]
+    return searcher(sp.group, sp.page)
 
 
 def backend_fetch_story(story_id: str) -> Message:
