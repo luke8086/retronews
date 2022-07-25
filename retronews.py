@@ -619,6 +619,9 @@ def app_render(app: AppState) -> None:
 def app_compute_layout(app: AppState) -> Layout:
     (lines, cols) = app.screen.getmaxyx()
 
+    if lines < 25 or cols < 80:
+        raise Exception("At least 80x25 terminal is required")
+
     index_start = 1
     max_index_height = lines - 3
     index_height = (max_index_height // 3) if app.pager_visible else max_index_height
