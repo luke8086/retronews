@@ -170,6 +170,8 @@ class HTMLParser(html.parser.HTMLParser):
     def handle_starttag(self, tag, attr):
         if tag == "a":
             self.current_link = dict(attr).get("href")
+        elif tag == "i":
+            self.text += "*"
 
     def handle_endtag(self, tag):
         if tag == "br":
@@ -178,6 +180,8 @@ class HTMLParser(html.parser.HTMLParser):
             self.text += "\n\n"
         elif tag == "a":
             self.current_link = None
+        elif tag == "i":
+            self.text += "*"
 
 
 def parse_html(html: str) -> str:
