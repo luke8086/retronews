@@ -159,7 +159,7 @@ class HTMLParser(html.parser.HTMLParser):
     def handle_data(self, data):
         if self.current_link is None or self.current_link == data:
             # Data is not a link or it's identical to the link
-            self.text += data
+            self.text += data.replace("\n", " ")
         elif data.endswith("...") and self.current_link.startswith(data[:-3]):
             # Replace HN-shortened URL with the full one
             self.text += self.current_link
