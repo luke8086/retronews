@@ -141,15 +141,30 @@ class HNEntry(TypedDict):
 
 class HTMLParser(html.parser.HTMLParser):
     text: str = ""
+    current_link: Optional[str] = None
 
     def handle_data(self, data):
-        self.text += data
+        if self.current_link is None or self.current_link == data:
+            # Data is not a link or it's identical to the link
+            self.text += data
+        elif data.endswith("...") and self.current_link.startswith(data[:-3]):
+            # Replace HN-shortened URL with the full one
+            self.text += self.current_link
+        else:
+            # Insert both the text and the full link
+            self.text += f"{data} ({self.current_link})"
+
+    def handle_starttag(self, tag, attr):
+        if tag == "a":
+            self.current_link = dict(attr).get("href")
 
     def handle_endtag(self, tag):
         if tag == "br":
             self.text += "\n"
         elif tag == "p":
             self.text += "\n\n"
+        elif tag == "a":
+            self.current_link = None
 
 
 def parse_html(html: str) -> str:
