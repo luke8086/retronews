@@ -32,6 +32,8 @@ from typing import (
     Union,
 )
 
+REQUEST_TIMEOUT = 10
+
 T = TypeVar("T")
 
 QUOTE_REX = re.compile(r"^(> ?)+")
@@ -200,7 +202,7 @@ def fetch(url: str) -> str:
 
     headers = {"User-Agent": "retronews"}
     req = urllib.request.Request(url, headers=headers)
-    resp = urllib.request.urlopen(req).read().decode()
+    resp = urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT).read().decode()
 
     return resp
 
@@ -397,6 +399,28 @@ def db_load_read_comments(db: sqlite3.Connection, messages_by_id: Dict[str, Mess
         stories_by_id[row["story_id"]].read_comments = row["count"]
 
 
+def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
+    if flash is not None:
+        app_show_flash(app, flash)
+
+    ret = None
+
+    try:
+        ret = fn()
+    except Exception as e:
+        app_show_flash(app, f"Error: {e}")
+    else:
+        if flash is not None:
+            app_show_flash(app, None)
+
+    return ret
+
+
+def app_show_flash(app: AppState, flash: Optional[str]) -> None:
+    app.flash = flash
+    app_render(app)
+
+
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
     app.selected_message = message
 
@@ -444,11 +468,12 @@ def app_load_messages(
 
 
 def app_load_stories_page(app: AppState) -> None:
-    app.flash = "Fetching stories..."
-    app_render(app)
+    sp = app.stories_page
+    fn = partial(backend_search_stories, sp)
+    flash = f"Fetching stories from '{sp.title}' (page {sp.page})..."
 
-    messages = backend_search_stories(app.stories_page)
-    app_load_messages(app, messages)
+    if (messages := app_safe_run(app, fn, flash=flash)) is not None:
+        app_load_messages(app, messages)
 
 
 def app_close_story(app: AppState) -> None:
@@ -462,10 +487,11 @@ def app_close_story(app: AppState) -> None:
 
 
 def app_open_story(app: AppState, story_message: Message) -> None:
-    app.flash = f"Fetching story '{story_message.story_id}'..."
-    app_render(app)
+    fn = partial(backend_fetch_story, story_message.story_id)
+    flash = f"Fetching story '{story_message.story_id}'..."
 
-    new_story_message = backend_fetch_story(story_message.story_id)
+    if (new_story_message := app_safe_run(app, fn, flash=flash)) is None:
+        return
 
     app_close_story(app)
 
@@ -629,7 +655,6 @@ def app_render(app: AppState) -> None:
     app_render_bottom_menu(app)
 
     app.screen.refresh()
-    app.flash = ""
 
 
 def app_init_logging() -> None:
@@ -645,7 +670,7 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
-    stories_page = StoriesPage(backend="hn", group="news", page=1)
+    stories_page = STORIES_PAGE_TABS["1"]
 
     app = AppState(screen=screen, colors=Colors(), db=db, stories_page=stories_page)
     app_load_stories_page(app)
@@ -745,6 +770,7 @@ def main(screen: "curses._CursesWindow") -> None:
 
     while True:
         app_render(app)
+        app.flash = ""
         c = app.screen.getch()
         KEY_BINDINGS.get(c, cmd_unknown)(app)
 
