@@ -588,12 +588,13 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
         is_read = message.flags.read and (len(message.children) > 0 or message.read_comments >= message.total_comments)
+        read_attr = 0 if is_read else curses.A_BOLD
         subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
-        subject_attr = subject_attr if is_read else subject_attr | curses.A_BOLD
+        subject_attr = subject_attr | read_attr
 
-        app.screen.chgat(row, 1, 16, app.colors.date)
-        app.screen.chgat(row, 21, 10, app.colors.author)
-        app.screen.chgat(row, 35, 4, app.colors.unread_comments)
+        app.screen.chgat(row, 1, 16, app.colors.date | read_attr)
+        app.screen.chgat(row, 21, 10, app.colors.author | read_attr)
+        app.screen.chgat(row, 35, 4, app.colors.unread_comments | read_attr)
         app.screen.chgat(row, 42, len(message.index_tree), app.colors.tree)
         app.screen.chgat(row, 42 + len(message.index_tree), cols - 42 - len(message.index_tree), subject_attr)
 
