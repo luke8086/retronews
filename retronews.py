@@ -682,7 +682,7 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
         date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
         title=hit["title"],
-        total_comments=hit["num_comments"] or 0,
+        total_comments=(hit["num_comments"] or 0) + 1,
     )
 
 
