@@ -65,6 +65,7 @@ class Colors:
         self.code = init_pair(curses.COLOR_GREEN, -1)
         self.url = init_pair(curses.COLOR_MAGENTA, -1)
         self.cursor = init_pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
+        self.empty_pager_line = init_pair(curses.COLOR_GREEN, -1)
 
 
 @dataclass
@@ -540,6 +541,8 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
         return app.colors.quote
     elif line.startswith("  "):
         return app.colors.code
+    elif line == "~":
+        return app.colors.empty_pager_line
     else:
         return 0
 
@@ -565,7 +568,8 @@ def app_render_pager(app: AppState) -> None:
         return
 
     for i in range(height):
-        line = list_get(message.lines, i + app.pager_offset) or ""
+        line = list_get(message.lines, i + app.pager_offset)
+        line = "~" if line is None else line
         app_render_pager_line(app, i + start, line)
 
 
