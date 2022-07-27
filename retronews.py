@@ -240,11 +240,9 @@ def cmd_index_down(app: AppState) -> None:
 
 def cmd_index_next_unread(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
-
-    for message in app.messages[pos:]:
-        if not message.flags.read:
-            app_select_message(app, message)
-            break
+    message = next((msg for msg in app.messages[pos:] if not msg_is_read(msg)), None)
+    if message is not None:
+        app_select_message(app, message)
 
 
 def cmd_pager_up(app: AppState) -> None:
@@ -305,7 +303,7 @@ def cmd_open(app: AppState) -> None:
     if (msg := app.selected_message) is None:
         return
 
-    if msg.msg_id == msg.thread_id:
+    if msg_is_thread(msg):
         app_open_thread(app, msg)
     else:
         app_select_message(app, msg, show_pager=True)
@@ -400,7 +398,7 @@ def db_load_message_flags(db: sqlite3.Connection, messages_by_id: Dict[str, Mess
 
 
 def db_load_read_comments(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
-    threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg.msg_id == msg.thread_id}
+    threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg_is_thread(msg)}
     thread_ids = list(threads_by_id.keys())
 
     sql = f"""
@@ -492,10 +490,7 @@ def app_fetch_stories(app: AppState) -> None:
 
 def app_close_thread(app: AppState) -> None:
     selected_thread_id = app.selected_message.thread_id if app.selected_message else None
-    filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.thread_id]
-
-    for msg in filtered_messages:
-        msg.children = []
+    filtered_messages = [msg_unload(msg) for msg in app.messages if msg_is_thread(msg)]
 
     app_load_messages(app, filtered_messages, selected_message_id=selected_thread_id)
 
@@ -581,13 +576,13 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
 
-    is_response = message.title.startswith("Re:") and message.msg_id != message.thread_id
+    is_response = message.title.startswith("Re:") and not msg_is_thread(message)
     hide_title = is_response and row > app.layout.index_start and not message.flags.starred
     title = "" if hide_title else message.title
 
     unread = (
         str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
-        if message.msg_id == message.thread_id
+        if msg_is_thread(message)
         else "    "
     )
 
@@ -596,7 +591,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     if message == app.selected_message:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
-        is_read = message.flags.read and (len(message.children) > 0 or message.read_comments >= message.total_comments)
+        is_read = msg_is_read(message)
         read_attr = 0 if is_read else curses.A_BOLD
         subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
         subject_attr = subject_attr | read_attr
@@ -732,6 +727,28 @@ def msg_build_lines(msg: Message) -> List[str]:
         lines += wrap_paragraph(p)
 
     return lines
+
+
+def msg_unload(msg: Message) -> Message:
+    msg.children = []
+    msg.body = None
+    return msg
+
+
+def msg_is_loaded(msg: Message) -> bool:
+    return msg.body is not None
+
+
+def msg_is_thread(msg: Message) -> bool:
+    return msg.msg_id == msg.thread_id
+
+
+def msg_is_read(msg: Message) -> bool:
+    # If the message is an unloaded thread, check if all comments are read
+    if msg_is_thread(msg) and not msg_is_loaded(msg):
+        return msg.read_comments >= msg.total_comments
+
+    return msg.flags.read
 
 
 def hn_parse_search_hit(hit: HNSearchHit) -> Message:
