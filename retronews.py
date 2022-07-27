@@ -24,6 +24,7 @@ from typing import Any, Callable, Generator, Optional, TypedDict, TypeVar, Union
 
 KEY_BINDINGS = {
     ord("q"): lambda app: cmd_quit(app),
+    ord("?"): lambda app: cmd_help(app),
     ord("\n"): lambda app: cmd_open(app),
     ord(" "): lambda app: cmd_open(app),
     ord("x"): lambda app: cmd_close(app),
@@ -46,7 +47,29 @@ KEY_BINDINGS = {
 
 KEY_BINDINGS.update({ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(10)})  # type: ignore
 
-KEY_BINDINGS_HELP = "q:Quit  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star  >:Next-Pg"
+HELP_MENU = "q:Quit  ?:Help  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star"
+
+HELP_SCREEN = """\
+Available commands:
+
+  q                       Quit retronews
+  ?                       Show this help message
+  UP, DOWN                Go up / down by one message / pager line
+  PG UP, PG DOWN          Gp up / down by one page of messages / pager lines
+  p, n                    Go to previous / next message
+  N                       Go to next unread message
+  RETURN, SPACE           Open selected message
+  x                       Close current message / thread
+  1 - 4                   Change group
+  <, >                    Go to previous / next page
+  k, j                    Scroll pager up / down by one line
+  s                       Star / unstar selected message
+  S                       Star / unstar current thread
+
+See https://github.com/luke8086/retronews for more information.
+
+Press any key to continue...
+"""
 
 REQUEST_TIMEOUT = 10
 
@@ -242,6 +265,10 @@ def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[
 def cmd_quit(app: AppState):
     app.db.close()
     sys.exit(0)
+
+
+def cmd_help(app: AppState):
+    app_show_help_screen(app)
 
 
 def cmd_up(app: AppState) -> None:
@@ -440,6 +467,13 @@ def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Op
     return ret
 
 
+def app_show_help_screen(app: AppState) -> None:
+    app.screen.erase()
+    app.screen.addstr(0, 0, HELP_SCREEN)
+    app.screen.refresh()
+    app.screen.getch()
+
+
 def app_show_flash(app: AppState, flash: Optional[str]) -> None:
     app.flash = flash
     app_render(app)
@@ -630,7 +664,7 @@ def app_render_index(app: AppState) -> None:
 def app_render_top_menu(app: AppState) -> None:
     lt = app.layout
     cols = lt.cols
-    app.screen.insstr(lt.top_menu_row, 0, KEY_BINDINGS_HELP[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
 
 
 def app_render_middle_menu(app: AppState) -> None:
