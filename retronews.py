@@ -325,17 +325,17 @@ def cmd_load_tab(app: AppState, tab: int) -> None:
 
 def cmd_load_group(app: AppState, group: Group) -> None:
     app.group = group
-    app_fetch_stories(app)
+    app_fetch_threads(app)
 
 
 def cmd_load_prev_page(app: AppState) -> None:
     app.group = group_advance_page(app.group, -1)
-    app_fetch_stories(app)
+    app_fetch_threads(app)
 
 
 def cmd_load_next_page(app: AppState) -> None:
     app.group = group_advance_page(app.group, 1)
-    app_fetch_stories(app)
+    app_fetch_threads(app)
 
 
 def cmd_open(app: AppState) -> None:
@@ -501,7 +501,7 @@ def app_load_messages(
     app_select_message(app, selected_message, show_pager)
 
 
-def app_fetch_stories(app: AppState) -> None:
+def app_fetch_threads(app: AppState) -> None:
     fn = partial(group_search_threads, app.group)
     flash = f"Fetching stories from '{app.group.label}' (page {app.group.page})..."
 
@@ -728,7 +728,7 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     group = GROUP_TABS[0]
 
     app = AppState(screen=screen, colors=Colors(), db=db, group=group)
-    app_fetch_stories(app)
+    app_fetch_threads(app)
 
     return app
 
