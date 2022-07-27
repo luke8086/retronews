@@ -389,12 +389,14 @@ def db_init() -> sqlite3.Connection:
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT NOT NULL PRIMARY KEY,
             thread_id TEXT NOT NULL,
-            flags JSON NOT NULL)
+            flags JSON NOT NULL);
+
+        CREATE INDEX IF NOT EXISTS messages_thread_id ON messages (thread_id);
     """
 
     db = sqlite3.connect(path)
     db.row_factory = sqlite3.Row
-    db.execute(create_table_sql)
+    db.executescript(create_table_sql)
     db.commit()
 
     return db
