@@ -32,6 +32,32 @@ from typing import (
     Union,
 )
 
+KEY_BINDINGS = {
+    ord("q"): lambda app: cmd_quit(app),
+    ord("\n"): lambda app: cmd_open(app),
+    ord(" "): lambda app: cmd_open(app),
+    ord("x"): lambda app: cmd_close(app),
+    ord("s"): lambda app: cmd_star(app),
+    ord("S"): lambda app: cmd_star_thread(app),
+    ord("r"): lambda app: cmd_toggle_raw_mode(app),
+    ord("k"): lambda app: cmd_up(app),
+    ord("j"): lambda app: cmd_down(app),
+    ord("p"): lambda app: cmd_index_up(app),
+    ord("n"): lambda app: cmd_index_down(app),
+    ord("N"): lambda app: cmd_index_next_unread(app),
+    ord("<"): lambda app: cmd_load_prev_page(app),
+    ord(">"): lambda app: cmd_load_next_page(app),
+    curses.KEY_UP: lambda app: cmd_index_up(app),
+    curses.KEY_DOWN: lambda app: cmd_index_down(app),
+    curses.KEY_PPAGE: lambda app: cmd_page_up(app),
+    curses.KEY_NPAGE: lambda app: cmd_page_down(app),
+}
+
+
+KEY_BINDINGS.update({ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(10)})  # type: ignore
+
+KEY_BINDINGS_HELP = "q:Quit  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star  >:Next-Pg"
+
 REQUEST_TIMEOUT = 10
 
 T = TypeVar("T")
@@ -67,6 +93,22 @@ class Colors:
         return curses.color_pair(self._last_index)
 
 
+@dataclasses.dataclass(frozen=True)
+class Group:
+    provider: str
+    name: str
+    page: int = 1
+    label: str = ""
+
+
+GROUP_TABS: List[Group] = [
+    Group(provider="hn", name="news", label="Front Page"),
+    Group(provider="hn-new", name="", label="New"),
+    Group(provider="hn", name="ask", label="Ask HN"),
+    Group(provider="hn", name="show", label="Show HN"),
+]
+
+
 @dataclasses.dataclass
 class MessageFlags:
     read: bool = False
@@ -89,14 +131,6 @@ class Message:
     total_comments: int = 0
     index_position: int = 0
     index_tree: str = ""
-
-
-@dataclasses.dataclass(frozen=True)
-class Group:
-    provider: str
-    name: str
-    page: int = 1
-    label: str = ""
 
 
 @dataclasses.dataclass
@@ -284,6 +318,11 @@ def cmd_pager_page_down(app: AppState) -> None:
         app.pager_offset = min(app.pager_offset + pager_height, max(0, len(message.lines) - pager_height))
 
 
+def cmd_load_tab(app: AppState, tab: int) -> None:
+    if group := list_get(GROUP_TABS, tab - 1):
+        cmd_load_group(app, group)
+
+
 def cmd_load_group(app: AppState, group: Group) -> None:
     app.group = group
     app_fetch_stories(app)
@@ -342,39 +381,6 @@ def cmd_toggle_raw_mode(app: AppState) -> None:
 
 def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
-
-
-GROUP_TABS = {
-    "1": Group(provider="hn", name="news", label="Front Page"),
-    "2": Group(provider="hn-new", name="", label="New"),
-    "3": Group(provider="hn", name="ask", label="Ask HN"),
-    "4": Group(provider="hn", name="show", label="Show HN"),
-}
-
-KEY_BINDINGS = {
-    ord("q"): cmd_quit,
-    ord("\n"): cmd_open,
-    ord(" "): cmd_open,
-    ord("x"): cmd_close,
-    ord("s"): cmd_star,
-    ord("S"): cmd_star_thread,
-    ord("r"): cmd_toggle_raw_mode,
-    ord("k"): cmd_up,
-    ord("j"): cmd_down,
-    ord("p"): cmd_index_up,
-    ord("n"): cmd_index_down,
-    ord("N"): cmd_index_next_unread,
-    ord("<"): cmd_load_prev_page,
-    ord(">"): cmd_load_next_page,
-    curses.KEY_UP: cmd_index_up,
-    curses.KEY_DOWN: cmd_index_down,
-    curses.KEY_PPAGE: cmd_page_up,
-    curses.KEY_NPAGE: cmd_page_down,
-}
-
-KEY_BINDINGS.update({ord(c): partial(cmd_load_group, group=group) for c, group in GROUP_TABS.items()})
-
-KEY_BINDINGS_HELP = "q:Quit  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star  >:Next-Pg"
 
 
 def db_init() -> sqlite3.Connection:
@@ -660,9 +666,9 @@ def app_render_bottom_menu(app: AppState) -> None:
     app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
     app.screen.move(lt.bottom_menu_row, 0)
 
-    for (key, group) in GROUP_TABS.items():
+    for (i, group) in enumerate(GROUP_TABS):
         attr = app.colors.menu | curses.A_BOLD
-        text = f"{key}:{group.label}"
+        text = f"{i+1}:{group.label}"
 
         if group.provider == app.group.provider and group.name == app.group.name:
             attr = app.colors.menu_active | curses.A_BOLD
@@ -717,7 +723,7 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
-    group = GROUP_TABS["1"]
+    group = GROUP_TABS[0]
 
     app = AppState(screen=screen, colors=Colors(), db=db, group=group)
     app_fetch_stories(app)
