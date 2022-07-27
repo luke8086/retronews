@@ -580,8 +580,10 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
+
     is_response = message.title.startswith("Re:") and message.msg_id != message.thread_id
-    title = "" if is_response and row > app.layout.index_start else message.title
+    hide_title = is_response and row > app.layout.index_start and not message.flags.starred
+    title = "" if hide_title else message.title
 
     unread = (
         str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
