@@ -76,7 +76,7 @@ class MessageFlags:
 @dataclasses.dataclass
 class Message:
     msg_id: str
-    story_id: str
+    thread_id: str
     content_location: str
     date: datetime
     author: str
@@ -305,8 +305,8 @@ def cmd_open(app: AppState) -> None:
     if (msg := app.selected_message) is None:
         return
 
-    if msg.msg_id == msg.story_id:
-        app_open_story(app, msg)
+    if msg.msg_id == msg.thread_id:
+        app_open_thread(app, msg)
     else:
         app_select_message(app, msg, show_pager=True)
 
@@ -315,7 +315,7 @@ def cmd_close(app: AppState) -> None:
     if app.pager_visible:
         app.pager_visible = False
     else:
-        app_close_story(app)
+        app_close_thread(app)
 
 
 def cmd_star(app: AppState) -> None:
@@ -371,7 +371,7 @@ def db_init() -> sqlite3.Connection:
     create_table_sql = """
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT NOT NULL PRIMARY KEY,
-            story_id TEXT NOT NULL,
+            thread_id TEXT NOT NULL,
             flags JSON NOT NULL)
     """
 
@@ -384,9 +384,9 @@ def db_init() -> sqlite3.Connection:
 
 
 def db_save_message(db: sqlite3.Connection, message: Message) -> None:
-    sql = """INSERT OR REPLACE INTO messages (id, story_id, flags) VALUES (?, ?, ?)"""
+    sql = """INSERT OR REPLACE INTO messages (id, thread_id, flags) VALUES (?, ?, ?)"""
     flags_json = json.dumps(dataclasses.asdict(message.flags))
-    db.execute(sql, (message.msg_id, message.story_id, flags_json))
+    db.execute(sql, (message.msg_id, message.thread_id, flags_json))
     db.commit()
 
 
@@ -400,18 +400,18 @@ def db_load_message_flags(db: sqlite3.Connection, messages_by_id: Dict[str, Mess
 
 
 def db_load_read_comments(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
-    stories_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg.msg_id == msg.story_id}
-    story_ids = list(stories_by_id.keys())
+    threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg.msg_id == msg.thread_id}
+    thread_ids = list(threads_by_id.keys())
 
     sql = f"""
-        SELECT story_id, COUNT(*) AS count
+        SELECT thread_id, COUNT(*) AS count
         FROM messages
-        WHERE story_id IN ({','.join('?' for _ in story_ids)}) AND JSON_EXTRACT(flags, '$.read')
-        GROUP BY story_id
+        WHERE thread_id IN ({','.join('?' for _ in thread_ids)}) AND JSON_EXTRACT(flags, '$.read')
+        GROUP BY thread_id
     """
 
-    for row in db.execute(sql, story_ids):
-        stories_by_id[row["story_id"]].read_comments = row["count"]
+    for row in db.execute(sql, thread_ids):
+        threads_by_id[row["thread_id"]].read_comments = row["count"]
 
 
 def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
@@ -451,7 +451,7 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
     if app.pager_visible:
         message.flags.read = True
         db_save_message(app.db, message)
-        db_load_read_comments(app.db, {message.story_id: app.messages_by_id[message.story_id]})
+        db_load_read_comments(app.db, {message.thread_id: app.messages_by_id[message.thread_id]})
 
     app.pager_offset = 0
 
@@ -483,41 +483,41 @@ def app_load_messages(
 
 
 def app_fetch_stories(app: AppState) -> None:
-    fn = partial(group_search_stories, app.group)
+    fn = partial(group_search_threads, app.group)
     flash = f"Fetching stories from '{app.group.label}' (page {app.group.page})..."
 
     if (messages := app_safe_run(app, fn, flash=flash)) is not None:
         app_load_messages(app, messages)
 
 
-def app_close_story(app: AppState) -> None:
-    selected_story_id = app.selected_message.story_id if app.selected_message else None
-    filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.story_id]
+def app_close_thread(app: AppState) -> None:
+    selected_thread_id = app.selected_message.thread_id if app.selected_message else None
+    filtered_messages = [msg for msg in app.messages if msg.msg_id == msg.thread_id]
 
     for msg in filtered_messages:
         msg.children = []
 
-    app_load_messages(app, filtered_messages, selected_message_id=selected_story_id)
+    app_load_messages(app, filtered_messages, selected_message_id=selected_thread_id)
 
 
-def app_open_story(app: AppState, story_message: Message) -> None:
-    fn = partial(group_fetch_story, story_message.story_id)
-    flash = f"Fetching story '{story_message.story_id}'..."
+def app_open_thread(app: AppState, thread_message: Message) -> None:
+    fn = partial(group_fetch_thread, thread_message.thread_id)
+    flash = f"Fetching thread '{thread_message.thread_id}'..."
 
-    if (new_story_message := app_safe_run(app, fn, flash=flash)) is None:
+    if (new_thread_message := app_safe_run(app, fn, flash=flash)) is None:
         return
 
-    app_close_story(app)
+    app_close_thread(app)
 
-    index_pos = story_message.index_position
-    story_messages = list(app_flatten_story(new_story_message, prefix="", is_last_child=False, is_top=True))
-    new_story_message.total_comments = len(story_messages)
-    messages = app.messages[:index_pos] + story_messages + app.messages[index_pos + 1 :]  # noqa: E203
+    index_pos = thread_message.index_position
+    thread_messages = list(app_flatten_thread(new_thread_message, prefix="", is_last_child=False, is_top=True))
+    new_thread_message.total_comments = len(thread_messages)
+    messages = app.messages[:index_pos] + thread_messages + app.messages[index_pos + 1 :]  # noqa: E203
 
-    app_load_messages(app, messages, selected_message_id=story_message.msg_id, show_pager=True)
+    app_load_messages(app, messages, selected_message_id=thread_message.msg_id, show_pager=True)
 
 
-def app_flatten_story(msg: Message, prefix, is_last_child, is_top=False) -> Generator[Message, None, None]:
+def app_flatten_thread(msg: Message, prefix, is_last_child, is_top=False) -> Generator[Message, None, None]:
     msg.index_tree = "" if is_top else f"{prefix}{'└─' if is_last_child else '├─'}> "
     yield msg
 
@@ -525,7 +525,7 @@ def app_flatten_story(msg: Message, prefix, is_last_child, is_top=False) -> Gene
 
     for i, child_node in enumerate(msg.children):
         tree_prefix = "" if is_top else f"{prefix}{'  ' if is_last_child else '│ '}"
-        for child in app_flatten_story(child_node, tree_prefix, i == children_count - 1):
+        for child in app_flatten_thread(child_node, tree_prefix, i == children_count - 1):
             yield child
 
 
@@ -580,12 +580,12 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
-    is_response = message.title.startswith("Re:") and message.msg_id != message.story_id
+    is_response = message.title.startswith("Re:") and message.msg_id != message.thread_id
     title = "" if is_response and row > app.layout.index_start else message.title
 
     unread = (
         str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
-        if message.msg_id == message.story_id
+        if message.msg_id == message.thread_id
         else "    "
     )
 
@@ -632,12 +632,12 @@ def app_render_middle_menu(app: AppState) -> None:
     if (message := app.selected_message) is None:
         return
 
-    if (story_message := app.messages_by_id.get(message.story_id)) is None:
+    if (thread_message := app.messages_by_id.get(message.thread_id)) is None:
         return
 
     cols = app.layout.cols
-    total = story_message.total_comments
-    unread = total - story_message.read_comments
+    total = thread_message.total_comments
+    unread = total - thread_message.read_comments
 
     text = f"--({unread}/{total} unread)--"[:cols].ljust(cols, "-")
 
@@ -735,7 +735,7 @@ def msg_build_lines(msg: Message) -> List[str]:
 def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     return Message(
         msg_id=f"{hit['objectID']}@hn",
-        story_id=f"{hit['objectID']}@hn",
+        thread_id=f"{hit['objectID']}@hn",
         content_location=f"https://news.ycombinator.com/item?id={hit['objectID']}",
         date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
@@ -744,45 +744,45 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     )
 
 
-def hn_parse_entry(entry: HNEntry, story_id: str = "", parent_title: str = "") -> Message:
-    story_id = story_id or str(entry["id"])
+def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") -> Message:
+    thread_id = thread_id or str(entry["id"])
 
     body = f"<p>{entry['url']}</p>" if entry["url"] else ""
     body = f"{body}{entry['text']}" if entry["text"] else body
 
     return Message(
         msg_id=f"{entry['id']}@hn",
-        story_id=f"{story_id}@hn",
+        thread_id=f"{thread_id}@hn",
         content_location=f"https://news.ycombinator.com/item?id={entry['id']}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
         author=entry["author"] or "unknown",
         title=entry["title"] or f"Re: {parent_title}",
         body=body,
-        children=[hn_parse_entry(child, story_id, entry["title"] or parent_title) for child in entry["children"]],
+        children=[hn_parse_entry(child, thread_id, entry["title"] or parent_title) for child in entry["children"]],
     )
 
 
-def hn_search_stories(group: str = "news", page: int = 1) -> List[Message]:
+def hn_search_threads(group: str = "news", page: int = 1) -> List[Message]:
     rex = re.compile(r'href="item\?id=(\d+)"')
 
     html = fetch(f"https://news.ycombinator.com/{group}?p={page}")
-    story_ids = set(match.group(1) for match in rex.finditer(html))
+    thread_ids = set(match.group(1) for match in rex.finditer(html))
 
-    story_tags = ",".join(f"story_{x}" for x in story_ids)
+    story_tags = ",".join(f"story_{x}" for x in thread_ids)
     url = f"https://hn.algolia.com/api/v1/search_by_date?hitsPerPage=200&tags=story,({story_tags})"
     hits = json.loads(fetch(url))["hits"]
 
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
-def hn_search_new_stories(_: str, page: int = 1) -> List[Message]:
+def hn_search_new_threads(_: str, page: int = 1) -> List[Message]:
     url = f"https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30&page={page}"
     hits = json.loads(fetch(url))["hits"]
 
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
-def hn_fetch_story(entry_id: Union[str, int]) -> Message:
+def hn_fetch_thread(entry_id: Union[str, int]) -> Message:
     resp = fetch(f"http://hn.algolia.com/api/v1/items/{entry_id}")
     entry: HNEntry = json.loads(resp)
     return hn_parse_entry(entry)
@@ -792,18 +792,18 @@ def group_advance_page(group: Group, offset: int = 1) -> Group:
     return dataclasses.replace(group, page=max(0, group.page + offset))
 
 
-def group_search_stories(group: Group) -> List[Message]:
+def group_search_threads(group: Group) -> List[Message]:
     searchers: Dict[str, Callable[[str, int], List[Message]]] = {
-        "hn": hn_search_stories,
-        "hn-new": hn_search_new_stories,
+        "hn": hn_search_threads,
+        "hn-new": hn_search_new_threads,
     }
     searcher = searchers[group.provider]
     return searcher(group.name, group.page)
 
 
-def group_fetch_story(story_id: str) -> Message:
-    (source_id, provider) = story_id.split("@")
-    return {"hn": hn_fetch_story}[provider](source_id)
+def group_fetch_thread(thread_id: str) -> Message:
+    (source_id, provider) = thread_id.split("@")
+    return {"hn": hn_fetch_thread}[provider](source_id)
 
 
 def main(screen: "curses._CursesWindow") -> None:
