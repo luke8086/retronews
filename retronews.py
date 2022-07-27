@@ -20,17 +20,7 @@ import urllib.request
 from datetime import datetime
 from functools import partial
 from textwrap import wrap
-from typing import (
-    Any,
-    Callable,
-    Dict,
-    Generator,
-    List,
-    Optional,
-    TypedDict,
-    TypeVar,
-    Union,
-)
+from typing import Any, Callable, Generator, Optional, TypedDict, TypeVar, Union
 
 KEY_BINDINGS = {
     ord("q"): lambda app: cmd_quit(app),
@@ -101,7 +91,7 @@ class Group:
     label: str = ""
 
 
-GROUP_TABS: List[Group] = [
+GROUP_TABS: list[Group] = [
     Group(provider="hn", name="news", label="Front Page"),
     Group(provider="hn-new", name="", label="New"),
     Group(provider="hn", name="ask", label="Ask HN"),
@@ -124,8 +114,8 @@ class Message:
     author: str
     title: str
     body: Optional[str] = None
-    lines: List[str] = dataclasses.field(default_factory=list)
-    children: List["Message"] = dataclasses.field(default_factory=list)
+    lines: list[str] = dataclasses.field(default_factory=list)
+    children: list["Message"] = dataclasses.field(default_factory=list)
     flags: MessageFlags = dataclasses.field(default_factory=MessageFlags)
     read_comments: int = 0
     total_comments: int = 0
@@ -153,8 +143,8 @@ class AppState:
     colors: Colors
     db: sqlite3.Connection
     group: Group
-    messages: List[Message] = dataclasses.field(default_factory=list)
-    messages_by_id: Dict[str, Message] = dataclasses.field(default_factory=dict)
+    messages: list[Message] = dataclasses.field(default_factory=list)
+    messages_by_id: dict[str, Message] = dataclasses.field(default_factory=dict)
     selected_message: Optional[Message] = None
     layout: Layout = dataclasses.field(default_factory=Layout)
     pager_visible: bool = False
@@ -176,7 +166,7 @@ class HNSearchHit(TypedDict):
 class HNEntry(TypedDict):
     author: Optional[str]
     # FIXME: Recursive declarations are not yet supported in TypedDicts
-    children: List[Any]
+    children: list[Any]
     created_at_i: int
     id: int
     parent_id: Optional[int]
@@ -224,7 +214,7 @@ def parse_html(html: str) -> str:
     return parser.text.strip()
 
 
-def wrap_paragraph(text: str) -> List[str]:
+def wrap_paragraph(text: str) -> list[str]:
     # Preserve empty lines
     if len(text) == 0:
         return [""]
@@ -245,7 +235,7 @@ def fetch(url: str) -> str:
     return resp
 
 
-def list_get(lst: List[T], index: int, default: Optional[T] = None) -> Optional[T]:
+def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[T]:
     return lst[index] if 0 <= index < len(lst) else default
 
 
@@ -409,7 +399,7 @@ def db_save_message(db: sqlite3.Connection, message: Message) -> None:
     db.commit()
 
 
-def db_load_message_flags(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
+def db_load_message_flags(db: sqlite3.Connection, messages_by_id: dict[str, Message]) -> None:
     message_ids = list(messages_by_id.keys())
     sql = f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in message_ids)})"
 
@@ -418,7 +408,7 @@ def db_load_message_flags(db: sqlite3.Connection, messages_by_id: Dict[str, Mess
         messages_by_id[row["id"]].flags = MessageFlags(**flags)
 
 
-def db_load_read_comments(db: sqlite3.Connection, messages_by_id: Dict[str, Message]) -> None:
+def db_load_read_comments(db: sqlite3.Connection, messages_by_id: dict[str, Message]) -> None:
     threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg_is_thread(msg)}
     thread_ids = list(threads_by_id.keys())
 
@@ -476,7 +466,7 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
 
 
 def app_load_messages(
-    app: AppState, messages: List[Message], selected_message_id: Optional[str] = None, show_pager: bool = False
+    app: AppState, messages: list[Message], selected_message_id: Optional[str] = None, show_pager: bool = False
 ) -> None:
     if selected_message_id is None and app.selected_message is not None:
         selected_message_id = app.selected_message.msg_id
@@ -733,7 +723,7 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     return app
 
 
-def msg_build_lines(msg: Message) -> List[str]:
+def msg_build_lines(msg: Message) -> list[str]:
     lines = [
         f"Content-Location: {msg.content_location}",
         f"Date: {msg.date.strftime('%Y-%m-%d %H:%M')}",
@@ -802,7 +792,7 @@ def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") 
     )
 
 
-def hn_search_threads(group: str = "news", page: int = 1) -> List[Message]:
+def hn_search_threads(group: str = "news", page: int = 1) -> list[Message]:
     rex = re.compile(r'href="item\?id=(\d+)"')
 
     html = fetch(f"https://news.ycombinator.com/{group}?p={page}")
@@ -815,7 +805,7 @@ def hn_search_threads(group: str = "news", page: int = 1) -> List[Message]:
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
-def hn_search_new_threads(_: str, page: int = 1) -> List[Message]:
+def hn_search_new_threads(_: str, page: int = 1) -> list[Message]:
     url = f"https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30&page={page}"
     hits = json.loads(fetch(url))["hits"]
 
@@ -832,8 +822,8 @@ def group_advance_page(group: Group, offset: int = 1) -> Group:
     return dataclasses.replace(group, page=max(1, group.page + offset))
 
 
-def group_search_threads(group: Group) -> List[Message]:
-    searchers: Dict[str, Callable[[str, int], List[Message]]] = {
+def group_search_threads(group: Group) -> list[Message]:
+    searchers: dict[str, Callable[[str, int], list[Message]]] = {
         "hn": hn_search_threads,
         "hn-new": hn_search_new_threads,
     }
