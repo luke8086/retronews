@@ -42,10 +42,7 @@ KEY_BINDINGS = {
     curses.KEY_DOWN: lambda app: cmd_index_down(app),
     curses.KEY_PPAGE: lambda app: cmd_page_up(app),
     curses.KEY_NPAGE: lambda app: cmd_page_down(app),
-}
-
-
-KEY_BINDINGS.update({ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(10)})  # type: ignore
+} | {ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(1, 10)}
 
 HELP_MENU = "q:Quit  ?:Help  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star"
 
