@@ -323,6 +323,18 @@ def cmd_star(app: AppState) -> None:
         cmd_index_down(app)
 
 
+def cmd_star_thread(app: AppState) -> None:
+    if (msg := app.selected_message) is None:
+        return
+
+    if (thread_msg := app.messages_by_id.get(msg.thread_id)) is None:
+        return
+
+    thread_msg.flags.starred = not thread_msg.flags.starred
+    db_save_message(app.db, thread_msg)
+    cmd_index_down(app)
+
+
 def cmd_toggle_raw_mode(app: AppState) -> None:
     app.raw_mode = not app.raw_mode
     app_select_message(app, app.selected_message)
@@ -345,6 +357,7 @@ KEY_BINDINGS = {
     ord(" "): cmd_open,
     ord("x"): cmd_close,
     ord("s"): cmd_star,
+    ord("S"): cmd_star_thread,
     ord("r"): cmd_toggle_raw_mode,
     ord("k"): cmd_up,
     ord("j"): cmd_down,
