@@ -827,7 +827,7 @@ def hn_fetch_thread(entry_id: Union[str, int]) -> Message:
 
 
 def group_advance_page(group: Group, offset: int = 1) -> Group:
-    return dataclasses.replace(group, page=max(0, group.page + offset))
+    return dataclasses.replace(group, page=max(1, group.page + offset))
 
 
 def group_search_threads(group: Group) -> List[Message]:
