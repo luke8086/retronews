@@ -8,6 +8,7 @@
 #
 
 import curses
+import dataclasses
 import html.parser
 import json
 import logging
@@ -16,7 +17,6 @@ import re
 import sqlite3
 import sys
 import urllib.request
-from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from functools import partial
 from textwrap import wrap
@@ -67,13 +67,13 @@ class Colors:
         return curses.color_pair(self._last_index)
 
 
-@dataclass
+@dataclasses.dataclass
 class MessageFlags:
     read: bool = False
     starred: bool = False
 
 
-@dataclass
+@dataclasses.dataclass
 class Message:
     msg_id: str
     story_id: str
@@ -82,24 +82,24 @@ class Message:
     author: str
     title: str
     body: Optional[str] = None
-    lines: List[str] = field(default_factory=list)
-    children: List["Message"] = field(default_factory=list)
-    flags: MessageFlags = field(default_factory=MessageFlags)
+    lines: List[str] = dataclasses.field(default_factory=list)
+    children: List["Message"] = dataclasses.field(default_factory=list)
+    flags: MessageFlags = dataclasses.field(default_factory=MessageFlags)
     read_comments: int = 0
     total_comments: int = 0
     index_position: int = 0
     index_tree: str = ""
 
 
-@dataclass
-class StoriesPage:
-    backend: str
-    group: str
+@dataclasses.dataclass(frozen=True)
+class Group:
+    provider: str
+    name: str
     page: int = 1
-    title: str = ""
+    label: str = ""
 
 
-@dataclass
+@dataclasses.dataclass
 class Layout:
     lines: int = 0
     cols: int = 0
@@ -113,16 +113,16 @@ class Layout:
     flash_menu_row: int = 0
 
 
-@dataclass
+@dataclasses.dataclass
 class AppState:
     screen: "curses._CursesWindow"
     colors: Colors
     db: sqlite3.Connection
-    stories_page: StoriesPage
-    messages: List[Message] = field(default_factory=list)
-    messages_by_id: Dict[str, Message] = field(default_factory=dict)
+    group: Group
+    messages: List[Message] = dataclasses.field(default_factory=list)
+    messages_by_id: Dict[str, Message] = dataclasses.field(default_factory=dict)
     selected_message: Optional[Message] = None
-    layout: Layout = field(default_factory=Layout)
+    layout: Layout = dataclasses.field(default_factory=Layout)
     pager_visible: bool = False
     pager_offset: int = 0
     raw_mode: bool = False
@@ -286,19 +286,19 @@ def cmd_pager_page_down(app: AppState) -> None:
         app.pager_offset = min(app.pager_offset + pager_height, max(0, len(message.lines) - pager_height))
 
 
-def cmd_load_stories_page(app: AppState, sp: StoriesPage) -> None:
-    app.stories_page = sp
-    app_load_stories_page(app)
+def cmd_load_group(app: AppState, group: Group) -> None:
+    app.group = group
+    app_fetch_stories(app)
 
 
-def cmd_load_prev_stories_page(app: AppState) -> None:
-    app.stories_page.page = max(1, app.stories_page.page - 1)
-    app_load_stories_page(app)
+def cmd_load_prev_page(app: AppState) -> None:
+    app.group = group_advance_page(app.group, -1)
+    app_fetch_stories(app)
 
 
-def cmd_load_next_stories_page(app: AppState) -> None:
-    app.stories_page.page += 1
-    app_load_stories_page(app)
+def cmd_load_next_page(app: AppState) -> None:
+    app.group = group_advance_page(app.group, 1)
+    app_fetch_stories(app)
 
 
 def cmd_open(app: AppState) -> None:
@@ -334,11 +334,11 @@ def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
 
 
-STORIES_PAGE_TABS = {
-    "1": StoriesPage(backend="hn", group="news", title="Front Page"),
-    "2": StoriesPage(backend="hn-new", group="", title="New"),
-    "3": StoriesPage(backend="hn", group="ask", title="Ask HN"),
-    "4": StoriesPage(backend="hn", group="show", title="Show HN"),
+GROUP_TABS = {
+    "1": Group(provider="hn", name="news", label="Front Page"),
+    "2": Group(provider="hn-new", name="", label="New"),
+    "3": Group(provider="hn", name="ask", label="Ask HN"),
+    "4": Group(provider="hn", name="show", label="Show HN"),
 }
 
 KEY_BINDINGS = {
@@ -353,15 +353,15 @@ KEY_BINDINGS = {
     ord("p"): cmd_index_up,
     ord("n"): cmd_index_down,
     ord("N"): cmd_index_next_unread,
-    ord("<"): cmd_load_prev_stories_page,
-    ord(">"): cmd_load_next_stories_page,
+    ord("<"): cmd_load_prev_page,
+    ord(">"): cmd_load_next_page,
     curses.KEY_UP: cmd_index_up,
     curses.KEY_DOWN: cmd_index_down,
     curses.KEY_PPAGE: cmd_page_up,
     curses.KEY_NPAGE: cmd_page_down,
 }
 
-KEY_BINDINGS.update({ord(c): partial(cmd_load_stories_page, sp=sp) for c, sp in STORIES_PAGE_TABS.items()})
+KEY_BINDINGS.update({ord(c): partial(cmd_load_group, group=group) for c, group in GROUP_TABS.items()})
 
 KEY_BINDINGS_HELP = "q:Quit  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star  >:Next-Pg"
 
@@ -385,7 +385,8 @@ def db_init() -> sqlite3.Connection:
 
 def db_save_message(db: sqlite3.Connection, message: Message) -> None:
     sql = """INSERT OR REPLACE INTO messages (id, story_id, flags) VALUES (?, ?, ?)"""
-    db.execute(sql, (message.msg_id, message.story_id, json.dumps(asdict(message.flags))))
+    flags_json = json.dumps(dataclasses.asdict(message.flags))
+    db.execute(sql, (message.msg_id, message.story_id, flags_json))
     db.commit()
 
 
@@ -481,10 +482,9 @@ def app_load_messages(
     app_select_message(app, selected_message, show_pager)
 
 
-def app_load_stories_page(app: AppState) -> None:
-    sp = app.stories_page
-    fn = partial(backend_search_stories, sp)
-    flash = f"Fetching stories from '{sp.title}' (page {sp.page})..."
+def app_fetch_stories(app: AppState) -> None:
+    fn = partial(group_search_stories, app.group)
+    flash = f"Fetching stories from '{app.group.label}' (page {app.group.page})..."
 
     if (messages := app_safe_run(app, fn, flash=flash)) is not None:
         app_load_messages(app, messages)
@@ -501,7 +501,7 @@ def app_close_story(app: AppState) -> None:
 
 
 def app_open_story(app: AppState, story_message: Message) -> None:
-    fn = partial(backend_fetch_story, story_message.story_id)
+    fn = partial(group_fetch_story, story_message.story_id)
     flash = f"Fetching story '{story_message.story_id}'..."
 
     if (new_story_message := app_safe_run(app, fn, flash=flash)) is None:
@@ -650,13 +650,13 @@ def app_render_bottom_menu(app: AppState) -> None:
     app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
     app.screen.move(lt.bottom_menu_row, 0)
 
-    for (key, sp) in STORIES_PAGE_TABS.items():
+    for (key, group) in GROUP_TABS.items():
         attr = app.colors.menu | curses.A_BOLD
-        text = f"{key}:{sp.title}"
+        text = f"{key}:{group.label}"
 
-        if sp.backend == app.stories_page.backend and sp.group == app.stories_page.group:
+        if group.provider == app.group.provider and group.name == app.group.name:
             attr = app.colors.menu_active | curses.A_BOLD
-            text = f"{text} ({app.stories_page.page})"
+            text = f"{text} ({app.group.page})"
 
         app.screen.addstr(f"{text}  ", attr)
 
@@ -707,10 +707,10 @@ def app_init(screen: "curses._CursesWindow") -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
-    stories_page = STORIES_PAGE_TABS["1"]
+    group = GROUP_TABS["1"]
 
-    app = AppState(screen=screen, colors=Colors(), db=db, stories_page=stories_page)
-    app_load_stories_page(app)
+    app = AppState(screen=screen, colors=Colors(), db=db, group=group)
+    app_fetch_stories(app)
 
     return app
 
@@ -788,18 +788,22 @@ def hn_fetch_story(entry_id: Union[str, int]) -> Message:
     return hn_parse_entry(entry)
 
 
-def backend_search_stories(sp: StoriesPage) -> List[Message]:
+def group_advance_page(group: Group, offset: int = 1) -> Group:
+    return dataclasses.replace(group, page=max(0, group.page + offset))
+
+
+def group_search_stories(group: Group) -> List[Message]:
     searchers: Dict[str, Callable[[str, int], List[Message]]] = {
         "hn": hn_search_stories,
         "hn-new": hn_search_new_stories,
     }
-    searcher = searchers[sp.backend]
-    return searcher(sp.group, sp.page)
+    searcher = searchers[group.provider]
+    return searcher(group.name, group.page)
 
 
-def backend_fetch_story(story_id: str) -> Message:
-    (source_id, backend) = story_id.split("@")
-    return {"hn": hn_fetch_story}[backend](source_id)
+def group_fetch_story(story_id: str) -> Message:
+    (source_id, provider) = story_id.split("@")
+    return {"hn": hn_fetch_story}[provider](source_id)
 
 
 def main(screen: "curses._CursesWindow") -> None:
