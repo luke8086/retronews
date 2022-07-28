@@ -254,7 +254,7 @@ def parse_html(html: str) -> str:
     parser = HTMLParser()
     parser.feed(html)
     parser.close()
-    return parser.text.strip()
+    return parser.text.strip("\n")
 
 
 def wrap_paragraph(text: str) -> list[str]:
