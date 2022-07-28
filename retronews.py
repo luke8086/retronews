@@ -199,11 +199,23 @@ class HNEntry(TypedDict):
 class HTMLParser(html.parser.HTMLParser):
     text: str = ""
     current_link: Optional[str] = None
+    in_pre: bool = False
+    after_pre: bool = False
 
     def handle_data(self, data):
-        if self.current_link is None or self.current_link == data:
-            # Data is not a link or it's identical to the link
-            self.text += data.replace("\n", " ")
+        if self.current_link is None:
+            # Data is not part of a link
+            if self.after_pre:
+                # Right after </pre>, keep the initial newline
+                self.text += "\n"
+                data = data.lstrip()
+            if not self.in_pre:
+                # Unless inside of <pre>, replace newlines with spaces
+                data = data.replace("\n", " ")
+            self.text += data
+        elif self.current_link == data:
+            # Data is identical to the link
+            self.text += data
         elif data.endswith("...") and self.current_link.startswith(data[:-3]):
             # Replace HN-shortened URL with the full one
             self.text += self.current_link
@@ -211,11 +223,17 @@ class HTMLParser(html.parser.HTMLParser):
             # Insert both the text and the full link
             self.text += f"{data} ({self.current_link})"
 
+        self.after_pre = False
+
     def handle_starttag(self, tag, attr):
         if tag == "a":
             self.current_link = dict(attr).get("href")
         elif tag == "i":
             self.text += "*"
+        elif tag == "pre":
+            self.in_pre = True
+
+        self.after_pre = False
 
     def handle_endtag(self, tag):
         if tag == "br":
@@ -226,6 +244,10 @@ class HTMLParser(html.parser.HTMLParser):
             self.current_link = None
         elif tag == "i":
             self.text += "*"
+        elif tag == "pre":
+            self.in_pre = False
+
+        self.after_pre = tag == "pre"
 
 
 def parse_html(html: str) -> str:
@@ -236,14 +258,20 @@ def parse_html(html: str) -> str:
 
 
 def wrap_paragraph(text: str) -> list[str]:
-    # Preserve empty lines
     if len(text) == 0:
+        # Preserve empty lines
         return [""]
 
-    # Preserve quotation symbols in subsequent lines
-    match = QUOTE_REX.match(text)
-    quote_symbols = match[0] if match else ""
-    return wrap(text, subsequent_indent=quote_symbols, break_on_hyphens=False, break_long_words=False)
+    if text.startswith("  "):
+        # Preserve code indentation
+        indent = "  "
+    elif (match := QUOTE_REX.match(text)) is not None:
+        # Preserve quotation symbols in subsequent lines
+        indent = match[0]
+    else:
+        indent = ""
+
+    return wrap(text, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
 
 
 def fetch(url: str) -> str:
