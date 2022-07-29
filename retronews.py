@@ -847,13 +847,15 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
         content_location=f"https://news.ycombinator.com/item?id={hit['objectID']}",
         date=datetime.fromtimestamp(hit["created_at_i"]),
         author=hit["author"],
-        title=hit["title"],
+        title=html.unescape(hit["title"]),
         total_comments=(hit["num_comments"] or 0) + 1,
     )
 
 
 def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") -> Message:
     thread_id = thread_id or str(entry["id"])
+
+    my_title = html.unescape(entry["title"]) if entry["title"] else None
 
     body = f"<p>{entry['url']}</p>" if entry["url"] else ""
     body = f"{body}{entry['text']}" if entry["text"] else body
@@ -864,9 +866,9 @@ def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") 
         content_location=f"https://news.ycombinator.com/item?id={entry['id']}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
         author=entry["author"] or "unknown",
-        title=entry["title"] or f"Re: {parent_title}",
+        title=my_title or f"Re: {parent_title}",
         body=body,
-        children=[hn_parse_entry(child, thread_id, entry["title"] or parent_title) for child in entry["children"]],
+        children=[hn_parse_entry(child, thread_id, my_title or parent_title) for child in entry["children"]],
     )
 
 
