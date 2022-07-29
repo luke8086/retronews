@@ -37,6 +37,7 @@ KEY_BINDINGS = {
     ord("p"): lambda app: cmd_index_up(app),
     ord("n"): lambda app: cmd_index_down(app),
     ord("N"): lambda app: cmd_index_next_unread(app),
+    ord("R"): lambda app: cmd_refresh_page(app),
     ord("<"): lambda app: cmd_load_prev_page(app),
     ord(">"): lambda app: cmd_load_next_page(app),
     curses.KEY_UP: lambda app: cmd_index_up(app),
@@ -59,10 +60,12 @@ Available commands:
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
   1 - 4                   Change group
+  R                       Refresh current page
   <, >                    Go to previous / next page
   k, j                    Scroll pager up / down by one line
   s                       Star / unstar selected message
   S                       Star / unstar current thread
+  r                       Toggle raw HTML mode
 
 See https://github.com/luke8086/retronews for more information.
 
@@ -364,11 +367,11 @@ def cmd_pager_page_down(app: AppState) -> None:
 
 def cmd_load_tab(app: AppState, tab: int) -> None:
     if group := list_get(GROUP_TABS, tab - 1):
-        cmd_load_group(app, group)
+        app_load_group(app, group)
 
 
-def cmd_load_group(app: AppState, group: Group) -> None:
-    app_load_group(app, group)
+def cmd_refresh_page(app: AppState) -> None:
+    app_load_group(app, app.group)
 
 
 def cmd_load_prev_page(app: AppState) -> None:
