@@ -7,6 +7,7 @@
 # the Free Software Foundation.
 #
 
+import argparse
 import curses
 import dataclasses
 import html.parser
@@ -426,8 +427,8 @@ def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
 
 
-def db_init() -> sqlite3.Connection:
-    path = os.path.expanduser("~/.retronews.db")
+def db_init(path: str) -> sqlite3.Connection:
+    path = os.path.expanduser(path)
     create_table_sql = """
         CREATE TABLE IF NOT EXISTS messages (
             id TEXT NOT NULL PRIMARY KEY,
@@ -780,16 +781,7 @@ def app_render(app: AppState) -> None:
     app.screen.refresh()
 
 
-def app_init_logging() -> None:
-    format = "%(asctime)s %(levelname)s: %(message)s"
-    stream = open("tmp/retronews.log", "a")
-    logging.basicConfig(format=format, level="DEBUG", stream=stream)
-    logging.debug("Session started")
-
-
-def app_init(screen: "curses._CursesWindow") -> AppState:
-    db = db_init()
-
+def app_init(screen: "curses._CursesWindow", db: sqlite3.Connection) -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
@@ -939,8 +931,22 @@ def group_fetch_thread(thread_id: str) -> Message:
     return {"hn": hn_fetch_thread}[provider](source_id)
 
 
-def main(screen: "curses._CursesWindow") -> None:
-    app = app_init(screen)
+def argparse_formatter_class(prog):
+    return argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
+
+
+def logging_init(path: Optional[str]) -> None:
+    if path is None:
+        return logging.disable()
+
+    format = "%(asctime)s %(levelname)s: %(message)s"
+    stream = open(path, "a")
+    logging.basicConfig(format=format, level="DEBUG", stream=stream)
+    logging.debug("Session started")
+
+
+def main(screen: "curses._CursesWindow", db: sqlite3.Connection) -> None:
+    app = app_init(screen, db)
 
     while True:
         app_render(app)
@@ -950,5 +956,12 @@ def main(screen: "curses._CursesWindow") -> None:
 
 
 if __name__ == "__main__":
-    app_init_logging()
-    curses.wrapper(main)
+    ap = argparse.ArgumentParser(formatter_class=argparse_formatter_class)
+    ap.add_argument("-s", "--storage", metavar="PATH", default="~/.retronews.db", help="storage path")
+    ap.add_argument("-d", "--debug", metavar="PATH", default=None, help="debug logfile path")
+    args = ap.parse_args()
+
+    logging_init(args.debug)
+    db = db_init(args.storage)
+
+    curses.wrapper(main, db)
