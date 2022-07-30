@@ -771,14 +771,13 @@ def app_render_bottom_menu(app: AppState) -> None:
     app.screen.move(lt.bottom_menu_row, 0)
 
     for (i, group) in enumerate(GROUP_TABS):
-        attr = app.colors.menu | curses.A_BOLD
-        text = f"{i+1}:{group.label}"
+        is_active = group.provider == app.group.provider and group.name == app.group.name
+        color = app.colors.menu_active if is_active else app.colors.menu
+        attr = color | curses.A_BOLD
+        app.screen.addstr(f"{i+1}:{group.label}  ", attr)
 
-        if group.provider == app.group.provider and group.name == app.group.name:
-            attr = app.colors.menu_active | curses.A_BOLD
-            text = f"{text} ({app.group.page})"
-
-        app.screen.addstr(f"{text}  ", attr)
+    page_text = f"page: {app.group.page}"
+    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors.menu | curses.A_BOLD)
 
 
 def app_update_layout(app: AppState) -> None:
