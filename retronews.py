@@ -999,11 +999,11 @@ def main(screen: "curses._CursesWindow", db: sqlite3.Connection) -> None:
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(formatter_class=argparse_formatter_class)
-    ap.add_argument("-s", "--storage", metavar="PATH", default="~/.retronews.db", help="storage path")
-    ap.add_argument("-d", "--debug", metavar="PATH", default=None, help="debug logfile path")
+    ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
+    ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
     args = ap.parse_args()
 
-    logging_init(args.debug)
-    db = db_init(args.storage)
+    logging_init(args.logfile)
+    db = db_init(args.db)
 
     curses.wrapper(main, db)
