@@ -9,6 +9,7 @@
 
 import argparse
 import curses
+import curses.textpad
 import dataclasses
 import html.parser
 import json
@@ -40,6 +41,7 @@ KEY_BINDINGS = {
     ord("R"): lambda app: cmd_refresh_page(app),
     ord("<"): lambda app: cmd_load_prev_page(app),
     ord(">"): lambda app: cmd_load_next_page(app),
+    ord("g"): lambda app: cmd_go_to_page(app),
     curses.KEY_UP: lambda app: cmd_index_up(app),
     curses.KEY_DOWN: lambda app: cmd_index_down(app),
     curses.KEY_PPAGE: lambda app: cmd_page_up(app),
@@ -62,6 +64,7 @@ Available commands:
   1 - 4                   Change group
   R                       Refresh current page
   <, >                    Go to previous / next page
+  g                       Go to specific page
   k, j                    Scroll pager up / down by one line
   s                       Star / unstar selected message
   S                       Star / unstar current thread
@@ -382,6 +385,15 @@ def cmd_load_next_page(app: AppState) -> None:
     app_load_group(app, group_advance_page(app.group, 1))
 
 
+def cmd_go_to_page(app: AppState) -> None:
+    user_input = app_prompt(app, "Go to page (empty to cancel): ")
+
+    if user_input.isnumeric() and (page := int(user_input)) >= 1:
+        app_load_group(app, group_set_page(app.group, page))
+    elif len(user_input) > 0:
+        app_show_flash(app, "Invalid page number")
+
+
 def cmd_open(app: AppState) -> None:
     if (msg := app.selected_message) is None:
         return
@@ -520,6 +532,25 @@ def app_show_help_screen(app: AppState) -> None:
 def app_show_flash(app: AppState, flash: Optional[str]) -> None:
     app.flash = flash
     app_render(app)
+
+
+def app_prompt(app: AppState, prompt: str) -> str:
+    lt = app.layout
+
+    app.screen.insstr(lt.flash_menu_row, 0, prompt.ljust(lt.cols))
+    app.screen.refresh()
+
+    curses.curs_set(1)
+    win = curses.newwin(1, lt.cols - len(prompt), lt.flash_menu_row, len(prompt))
+
+    textbox = curses.textpad.Textbox(win)
+    textbox.stripspaces = True
+    ret = textbox.edit().strip()
+
+    del win
+    curses.curs_set(0)
+
+    return ret
 
 
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
@@ -899,8 +930,12 @@ def hn_fetch_thread(entry_id: Union[str, int]) -> Message:
     return hn_parse_entry(entry)
 
 
+def group_set_page(group: Group, page: int) -> Group:
+    return dataclasses.replace(group, page=page)
+
+
 def group_advance_page(group: Group, offset: int = 1) -> Group:
-    return dataclasses.replace(group, page=max(1, group.page + offset))
+    return group_set_page(group, page=max(1, group.page + offset))
 
 
 def group_search_starred_threads(db: sqlite3.Connection, page: int = 1) -> list[Message]:
