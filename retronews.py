@@ -271,12 +271,13 @@ def wrap_paragraph(text: str) -> list[str]:
 
     if text.startswith("  "):
         # Preserve code indentation
-        indent = "  "
-    elif (match := QUOTE_REX.match(text)) is not None:
+        return [text]
+
+    indent = ""
+
+    if (match := QUOTE_REX.match(text)) is not None:
         # Preserve quotation symbols in subsequent lines
         indent = match[0]
-    else:
-        indent = ""
 
     return wrap(text, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
 
@@ -670,6 +671,8 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
 def app_render_pager_line(app: AppState, row: int, line: str) -> None:
     line_attr = app_get_pager_line_attr(app, line)
 
+    app.screen.move(row, 0)
+    app.screen.clrtoeol()
     app.screen.move(row, 0)
 
     for word in line.split(" "):
