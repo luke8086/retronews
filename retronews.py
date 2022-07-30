@@ -435,7 +435,7 @@ def db_init(path: str) -> sqlite3.Connection:
             thread_id TEXT NOT NULL,
             flags JSON NOT NULL);
 
-        CREATE INDEX IF NOT EXISTS messages_thread_id ON messages (thread_id);
+        CREATE INDEX IF NOT EXISTS messages_starred_thread_id ON messages (JSON_EXTRACT(flags, '$.starred'), thread_id);
     """
 
     db = sqlite3.connect(path)
@@ -481,15 +481,16 @@ def db_load_starred_thread_ids(db: sqlite3.Connection, page: int = 1) -> list[st
     page_size = 30
     offset = (page - 1) * page_size
     sql = """
-        SELECT id
+        SELECT thread_id
         FROM messages
-        WHERE id = thread_id AND JSON_EXTRACT(flags, '$.starred')
-        ORDER BY id
+        WHERE JSON_EXTRACT(flags, '$.starred')
+        GROUP BY thread_id
+        ORDER BY thread_id DESC
         LIMIT ?
         OFFSET ?
     """
 
-    return [row["id"] for row in db.execute(sql, (page_size, offset))]
+    return [row["thread_id"] for row in db.execute(sql, (page_size, offset))]
 
 
 def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
