@@ -667,7 +667,8 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     author = message.author[:10].ljust(10)
 
     is_response = message.title.startswith("Re:") and not msg_is_thread(message)
-    hide_title = is_response and row > app.layout.index_start and not message.flags.starred
+    is_selected = message == app.selected_message
+    hide_title = is_response and row > app.layout.index_start and not message.flags.starred and not is_selected
     title = "" if hide_title else message.title
 
     unread = (
@@ -678,7 +679,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
 
     app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
 
-    if message == app.selected_message:
+    if is_selected:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
         is_read = msg_is_read(message)
