@@ -86,25 +86,23 @@ class Colors:
     _last_index: int = 0
 
     def __init__(self):
-        pair = self._add_pair
+        self.author = self._pair(curses.COLOR_YELLOW, -1)
+        self.code = self._pair(curses.COLOR_GREEN, -1)
+        self.cursor = self._pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
+        self.date = self._pair(curses.COLOR_CYAN, -1)
+        self.default = self._pair(curses.COLOR_WHITE, -1)
+        self.empty_pager_line = self._pair(curses.COLOR_GREEN, -1)
+        self.menu = self._pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
+        self.menu_active = self._pair(curses.COLOR_YELLOW, curses.COLOR_BLUE)
+        self.nested_quote = self._pair(curses.COLOR_BLUE, -1)
+        self.quote = self._pair(curses.COLOR_YELLOW, -1)
+        self.starred_subject = self._pair(curses.COLOR_CYAN, -1)
+        self.subject = self._pair(curses.COLOR_GREEN, -1)
+        self.tree = self._pair(curses.COLOR_RED, -1)
+        self.unread_comments = self._pair(curses.COLOR_GREEN, -1)
+        self.url = self._pair(curses.COLOR_MAGENTA, -1)
 
-        self.author = pair(curses.COLOR_YELLOW, -1)
-        self.code = pair(curses.COLOR_GREEN, -1)
-        self.cursor = pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
-        self.date = pair(curses.COLOR_CYAN, -1)
-        self.default = pair(curses.COLOR_WHITE, -1)
-        self.empty_pager_line = pair(curses.COLOR_GREEN, -1)
-        self.menu = pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
-        self.menu_active = pair(curses.COLOR_YELLOW, curses.COLOR_BLUE)
-        self.nested_quote = pair(curses.COLOR_BLUE, -1)
-        self.quote = pair(curses.COLOR_YELLOW, -1)
-        self.starred_subject = pair(curses.COLOR_CYAN, -1)
-        self.subject = pair(curses.COLOR_GREEN, -1)
-        self.tree = pair(curses.COLOR_RED, -1)
-        self.unread_comments = pair(curses.COLOR_GREEN, -1)
-        self.url = pair(curses.COLOR_MAGENTA, -1)
-
-    def _add_pair(self, fg: int, bg: int) -> int:
+    def _pair(self, fg: int, bg: int) -> int:
         self._last_index = self._last_index + 1
         curses.init_pair(self._last_index, fg, bg)
         return curses.color_pair(self._last_index)
@@ -114,8 +112,8 @@ class Colors:
 class Group:
     provider: str
     name: str
-    page: int = 1
     label: str = ""
+    page: int = 1
 
 
 GROUP_TABS: list[Group] = [
