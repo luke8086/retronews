@@ -209,30 +209,38 @@ class HTMLParser(html.parser.HTMLParser):
     in_pre: bool = False
     after_pre: bool = False
 
-    def handle_data(self, data):
-        if self.current_link is None:
-            # Data is not part of a link
-            if self.after_pre:
-                # Right after </pre>, keep the initial newline
-                self.text += "\n"
-                data = data.lstrip()
-            if not self.in_pre:
-                # Unless inside of <pre>, replace newlines with spaces
-                data = data.replace("\n", " ")
-            self.text += data
-        elif self.current_link == data:
+    def handle_link_data(self, data: str, link: str) -> None:
+        if data == link:
             # Data is identical to the link
             self.text += data
-        elif data.endswith("...") and self.current_link.startswith(data[:-3]):
+        elif data.endswith("...") and link.startswith(data[:-3]):
             # Replace HN-shortened URL with the full one
-            self.text += self.current_link
+            self.text += link
         else:
             # Insert both the text and the full link
-            self.text += f"{data} ({self.current_link})"
+            self.text += f"{data} ({link})"
 
         self.after_pre = False
 
-    def handle_starttag(self, tag, attr):
+    def handle_data(self, data: str) -> None:
+        if self.current_link is not None:
+            # Data is inside of a link
+            return self.handle_link_data(data, self.current_link)
+
+        if self.after_pre:
+            # Right after </pre>, keep the initial newline
+            self.text += "\n"
+            data = data.lstrip()
+
+        if not self.in_pre:
+            # Unless inside of <pre>, replace newlines with spaces
+            data = data.replace("\n", " ")
+
+        self.text += data
+
+        self.after_pre = False
+
+    def handle_starttag(self, tag: str, attr: list[tuple[str, Optional[str]]]) -> None:
         if tag == "a":
             self.current_link = dict(attr).get("href")
         elif tag == "i":
@@ -242,7 +250,7 @@ class HTMLParser(html.parser.HTMLParser):
 
         self.after_pre = False
 
-    def handle_endtag(self, tag):
+    def handle_endtag(self, tag: str) -> None:
         if tag == "br":
             self.text += "\n"
         elif tag == "p":
