@@ -22,9 +22,17 @@ import urllib.request
 from datetime import datetime
 from functools import partial
 from textwrap import wrap
-from typing import Any, Callable, Generator, Optional, TypedDict, TypeVar, Union
-
-from typing_extensions import TypeAlias
+from typing import (
+    Any,
+    Callable,
+    Generator,
+    NewType,
+    Optional,
+    TypedDict,
+    TypeVar,
+    Union,
+    cast,
+)
 
 KEY_BINDINGS = {
     ord("q"): lambda app: cmd_quit(app),
@@ -81,8 +89,10 @@ REQUEST_TIMEOUT = 10
 QUOTE_REX = re.compile(r"^(> ?)+")
 
 T = TypeVar("T")
-Window: TypeAlias = "curses._CursesWindow"
-DB: TypeAlias = "sqlite3.Connection"
+
+# FIXME: Use TypeAlias after migrating to Python 3.10
+Window = NewType("Window", "curses._CursesWindow")
+DB = NewType("DB", "sqlite3.Connection")
 
 
 class Colors:
@@ -482,7 +492,7 @@ def db_init(path: str) -> DB:
     db.executescript(create_table_sql)
     db.commit()
 
-    return db
+    return cast(DB, db)
 
 
 def db_save_message(db: DB, message: Message) -> None:
