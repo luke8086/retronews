@@ -653,23 +653,11 @@ def app_open_thread(app: AppState, thread_message: Message) -> None:
     app_close_thread(app)
 
     index_pos = thread_message.index_position
-    thread_messages = list(app_flatten_thread(new_thread_message, prefix="", is_last_child=False, is_top=True))
+    thread_messages = list(msg_flatten_thread(new_thread_message))
     new_thread_message.total_comments = len(thread_messages)
     messages = app.messages[:index_pos] + thread_messages + app.messages[index_pos + 1 :]  # noqa: E203
 
     app_load_messages(app, messages, selected_message_id=thread_message.msg_id, show_pager=True)
-
-
-def app_flatten_thread(msg: Message, prefix, is_last_child, is_top=False) -> Generator[Message, None, None]:
-    msg.index_tree = "" if is_top else f"{prefix}{'└─' if is_last_child else '├─'}> "
-    yield msg
-
-    children_count = len(msg.children)
-
-    for i, child_node in enumerate(msg.children):
-        tree_prefix = "" if is_top else f"{prefix}{'  ' if is_last_child else '│ '}"
-        for child in app_flatten_thread(child_node, tree_prefix, i == children_count - 1):
-            yield child
 
 
 def app_get_pager_line_attr(app: AppState, line: str) -> int:
@@ -851,6 +839,19 @@ def app_init(screen: "curses._CursesWindow", db: sqlite3.Connection) -> AppState
     app_load_group(app, app.group)
 
     return app
+
+
+def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = False) -> Generator[Message, None, None]:
+    msg.index_tree = "" if msg.is_thread else f"{prefix}{'└─' if is_last_child else '├─'}> "
+    yield msg
+
+    child_count = len(msg.children)
+    child_prefix = "" if msg.is_thread else f"{prefix}{'  ' if is_last_child else '│ '}"
+
+    for i, child_node in enumerate(msg.children):
+        child_is_last = i == child_count - 1
+        for child in msg_flatten_thread(child_node, prefix=child_prefix, is_last_child=child_is_last):
+            yield child
 
 
 def msg_build_lines(msg: Message) -> list[str]:
