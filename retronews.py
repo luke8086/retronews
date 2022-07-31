@@ -150,6 +150,23 @@ class Message:
     index_position: int = 0
     index_tree: str = ""
 
+    @property
+    def is_loaded(self) -> bool:
+        return self.body is not None
+
+    @property
+    def is_read(self) -> bool:
+        return self.flags.read
+
+    @property
+    def is_shown_as_read(self) -> bool:
+        # If the message is an unloaded thread, check if all comments are read
+        return self.read_comments >= self.total_comments if self.is_thread and not self.is_loaded else self.is_read
+
+    @property
+    def is_thread(self) -> bool:
+        return self.msg_id == self.thread_id
+
 
 @dataclasses.dataclass
 class Layout:
@@ -333,7 +350,7 @@ def cmd_index_down(app: AppState) -> None:
 
 def cmd_index_next_unread(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
-    message = next((msg for msg in app.messages[pos:] if not msg_is_read(msg)), None)
+    message = next((msg for msg in app.messages[pos:] if not msg.is_shown_as_read), None)
     if message is not None:
         app_select_message(app, message)
 
@@ -407,7 +424,7 @@ def cmd_open(app: AppState) -> None:
     if (msg := app.selected_message) is None:
         return
 
-    if msg_is_thread(msg):
+    if msg.is_thread:
         app_open_thread(app, msg)
     else:
         app_select_message(app, msg, show_pager=True)
@@ -484,7 +501,7 @@ def db_load_message_flags(db: sqlite3.Connection, messages_by_id: dict[str, Mess
 
 
 def db_load_read_comments(db: sqlite3.Connection, messages_by_id: dict[str, Message]) -> None:
-    threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg_is_thread(msg)}
+    threads_by_id = {msg.msg_id: msg for msg in messages_by_id.values() if msg.is_thread}
     thread_ids = list(threads_by_id.keys())
 
     sql = f"""
@@ -621,7 +638,7 @@ def app_load_group(app: AppState, group: Group) -> None:
 
 def app_close_thread(app: AppState) -> None:
     selected_thread_id = app.selected_message.thread_id if app.selected_message else None
-    filtered_messages = [msg_unload(msg) for msg in app.messages if msg_is_thread(msg)]
+    filtered_messages = [msg_unload(msg) for msg in app.messages if msg.is_thread]
 
     app_load_messages(app, filtered_messages, selected_message_id=selected_thread_id)
 
@@ -709,15 +726,13 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     date = message.date.strftime("%Y-%m-%d %H:%M")
     author = message.author[:10].ljust(10)
 
-    is_response = message.title.startswith("Re:") and not msg_is_thread(message)
+    is_response = message.title.startswith("Re:") and not message.is_thread
     is_selected = message == app.selected_message
     hide_title = is_response and row > app.layout.index_start and not message.flags.starred and not is_selected
     title = "" if hide_title else message.title
 
     unread = (
-        str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4)
-        if msg_is_thread(message)
-        else "    "
+        str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4) if message.is_thread else "    "
     )
 
     app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
@@ -725,8 +740,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     if is_selected:
         app.screen.chgat(row, 0, cols, app.colors.cursor)
     else:
-        is_read = msg_is_read(message)
-        read_attr = 0 if is_read else curses.A_BOLD
+        read_attr = 0 if message.is_shown_as_read else curses.A_BOLD
         subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
         subject_attr = subject_attr | read_attr
 
@@ -860,22 +874,6 @@ def msg_unload(msg: Message) -> Message:
     msg.children = []
     msg.body = None
     return msg
-
-
-def msg_is_loaded(msg: Message) -> bool:
-    return msg.body is not None
-
-
-def msg_is_thread(msg: Message) -> bool:
-    return msg.msg_id == msg.thread_id
-
-
-def msg_is_read(msg: Message) -> bool:
-    # If the message is an unloaded thread, check if all comments are read
-    if msg_is_thread(msg) and not msg_is_loaded(msg):
-        return msg.read_comments >= msg.total_comments
-
-    return msg.flags.read
 
 
 def hn_parse_search_hit(hit: HNSearchHit) -> Message:
