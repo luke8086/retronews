@@ -783,7 +783,10 @@ def app_render_middle_menu(app: AppState) -> None:
     total = thread_message.total_comments
     unread = total - thread_message.read_comments
 
-    text = f"--({unread}/{total} unread)--"[:cols].ljust(cols, "-")
+    text = f"--({unread}/{total} unread)"
+    if thread_message.flags.starred:
+        text += "--(starred thread)"
+    text = text[:cols].ljust(cols, "-")
 
     app.screen.insstr(row, 0, text, app.colors.menu | curses.A_BOLD)
 
