@@ -835,17 +835,12 @@ def app_update_layout(app: AppState) -> None:
 def app_render(app: AppState) -> None:
     app_update_layout(app)
     app.screen.erase()
-
     app_render_index(app)
-
-    if app.pager_visible:
-        app_render_pager(app)
-
+    app_render_pager(app)
     app_render_top_menu(app)
     app_render_middle_menu(app)
     app_render_bottom_menu(app)
     app.screen.insstr(app.layout.flash_menu_row, 0, app.flash or "")
-
     app.screen.refresh()
 
 
