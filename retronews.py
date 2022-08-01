@@ -643,7 +643,7 @@ def app_load_messages(
 
 
 def app_load_group(app: AppState, group: Group) -> None:
-    fn = partial(group_search_threads, group, db)
+    fn = partial(group_fetch_threads, group, db)
     flash = f"Fetching stories from '{group.label}' (page {group.page})..."
 
     if (messages := app_safe_run(app, fn, flash=flash)) is None:
@@ -929,7 +929,7 @@ def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") 
     )
 
 
-def hn_search_threads_by_id(thread_ids: list[str]) -> list[Message]:
+def hn_fetch_threads_by_id(thread_ids: list[str]) -> list[Message]:
     story_tags = ",".join(f"story_{x}" for x in thread_ids)
     url = f"https://hn.algolia.com/api/v1/search_by_date?hitsPerPage={len(thread_ids)}&tags=story,({story_tags})"
     hits = json.loads(fetch(url))["hits"]
@@ -937,16 +937,16 @@ def hn_search_threads_by_id(thread_ids: list[str]) -> list[Message]:
     return [hn_parse_search_hit(hit) for hit in hits]
 
 
-def hn_search_threads(group: str = "news", page: int = 1) -> list[Message]:
+def hn_fetch_threads(group: str = "news", page: int = 1) -> list[Message]:
     rex = re.compile(r'href="item\?id=(\d+)"')
 
     html = fetch(f"https://news.ycombinator.com/{group}?p={page}")
     thread_ids = list(set(match.group(1) for match in rex.finditer(html)))
 
-    return hn_search_threads_by_id(thread_ids)
+    return hn_fetch_threads_by_id(thread_ids)
 
 
-def hn_search_new_threads(page: int = 1) -> list[Message]:
+def hn_fetch_new_threads(page: int = 1) -> list[Message]:
     url = f"https://hn.algolia.com/api/v1/search_by_date?tags=story&hitsPerPage=30&page={page}"
     hits = json.loads(fetch(url))["hits"]
 
@@ -967,7 +967,7 @@ def group_advance_page(group: Group, offset: int = 1) -> Group:
     return group_set_page(group, page=max(1, group.page + offset))
 
 
-def group_search_starred_threads(db: DB, page: int = 1) -> list[Message]:
+def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
     thread_ids = db_load_starred_thread_ids(db, page)
     threads_by_provider: dict[str, list[str]] = {}
     threads = []
@@ -977,20 +977,20 @@ def group_search_starred_threads(db: DB, page: int = 1) -> list[Message]:
 
     for provider, thread_ids in threads_by_provider.items():
         if provider == "hn":
-            threads += hn_search_threads_by_id(thread_ids)
+            threads += hn_fetch_threads_by_id(thread_ids)
 
     threads.sort(key=lambda x: x.date, reverse=True)
 
     return threads
 
 
-def group_search_threads(group: Group, db: DB) -> list[Message]:
+def group_fetch_threads(group: Group, db: DB) -> list[Message]:
     if group.provider == "hn":
-        return hn_search_threads(group.name, group.page)
+        return hn_fetch_threads(group.name, group.page)
     elif group.provider == "hn-new":
-        return hn_search_new_threads(group.page)
+        return hn_fetch_new_threads(group.page)
     elif group.provider == "starred":
-        return group_search_starred_threads(db, group.page)
+        return group_fetch_starred_threads(db, group.page)
     else:
         return []
 
