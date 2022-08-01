@@ -45,15 +45,15 @@ KEY_BINDINGS = {
     ord("r"): lambda app: cmd_toggle_raw_mode(app),
     ord("k"): lambda app: cmd_up(app),
     ord("j"): lambda app: cmd_down(app),
-    ord("p"): lambda app: cmd_index_up(app),
-    ord("n"): lambda app: cmd_index_down(app),
-    ord("N"): lambda app: cmd_index_next_unread(app),
-    ord("R"): lambda app: cmd_refresh_page(app),
+    ord("p"): lambda app: cmd_prev(app),
+    ord("n"): lambda app: cmd_next(app),
+    ord("N"): lambda app: cmd_next_unread(app),
+    ord("R"): lambda app: cmd_reload_page(app),
     ord("<"): lambda app: cmd_load_prev_page(app),
     ord(">"): lambda app: cmd_load_next_page(app),
-    ord("g"): lambda app: cmd_go_to_page(app),
-    curses.KEY_UP: lambda app: cmd_index_up(app),
-    curses.KEY_DOWN: lambda app: cmd_index_down(app),
+    ord("g"): lambda app: cmd_load_page(app),
+    curses.KEY_UP: lambda app: cmd_prev(app),
+    curses.KEY_DOWN: lambda app: cmd_next(app),
     curses.KEY_PPAGE: lambda app: cmd_page_up(app),
     curses.KEY_NPAGE: lambda app: cmd_page_down(app),
 } | {ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(1, 10)}
@@ -342,24 +342,24 @@ def cmd_help(app: AppState):
 
 
 def cmd_up(app: AppState) -> None:
-    cmd_pager_up(app) if app.pager_visible else cmd_index_up(app)
+    cmd_pager_up(app) if app.pager_visible else cmd_prev(app)
 
 
 def cmd_down(app: AppState) -> None:
-    cmd_pager_down(app) if app.pager_visible else cmd_index_down(app)
+    cmd_pager_down(app) if app.pager_visible else cmd_next(app)
 
 
-def cmd_index_up(app: AppState) -> None:
+def cmd_prev(app: AppState) -> None:
     pos = app.selected_message.index_position - 1 if app.selected_message else 0
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
-def cmd_index_down(app: AppState) -> None:
+def cmd_next(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
     app_select_message(app, list_get(app.messages, pos, app.selected_message))
 
 
-def cmd_index_next_unread(app: AppState) -> None:
+def cmd_next_unread(app: AppState) -> None:
     pos = app.selected_message.index_position + 1 if app.selected_message else 0
     message = next((msg for msg in app.messages[pos:] if not msg.is_shown_as_read), None)
     if message is not None:
@@ -410,7 +410,7 @@ def cmd_load_tab(app: AppState, tab: int) -> None:
         app_load_group(app, group)
 
 
-def cmd_refresh_page(app: AppState) -> None:
+def cmd_reload_page(app: AppState) -> None:
     app_load_group(app, app.group)
 
 
@@ -422,7 +422,7 @@ def cmd_load_next_page(app: AppState) -> None:
     app_load_group(app, group_advance_page(app.group, 1))
 
 
-def cmd_go_to_page(app: AppState) -> None:
+def cmd_load_page(app: AppState) -> None:
     user_input = app_prompt(app, "Go to page (empty to cancel): ")
 
     if user_input.isnumeric() and (page := int(user_input)) >= 1:
@@ -452,7 +452,7 @@ def cmd_star(app: AppState) -> None:
     if (msg := app.selected_message) is not None:
         msg.flags.starred = not msg.flags.starred
         db_save_message(app.db, msg)
-        cmd_index_down(app)
+        cmd_next(app)
 
 
 def cmd_star_thread(app: AppState) -> None:
@@ -464,7 +464,7 @@ def cmd_star_thread(app: AppState) -> None:
 
     thread_msg.flags.starred = not thread_msg.flags.starred
     db_save_message(app.db, thread_msg)
-    cmd_index_down(app)
+    cmd_next(app)
 
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
