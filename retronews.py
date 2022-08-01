@@ -34,7 +34,7 @@ from typing import (
     cast,
 )
 
-KEY_BINDINGS = {
+KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("q"): lambda app: cmd_quit(app),
     ord("?"): lambda app: cmd_help(app),
     ord("\n"): lambda app: cmd_open(app),
