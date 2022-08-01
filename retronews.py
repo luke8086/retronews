@@ -480,11 +480,16 @@ def db_init(path: str) -> DB:
     path = os.path.expanduser(path)
     create_table_sql = """
         CREATE TABLE IF NOT EXISTS messages (
-            id TEXT NOT NULL PRIMARY KEY,
+            msg_id TEXT NOT NULL PRIMARY KEY,
             thread_id TEXT NOT NULL,
-            flags JSON NOT NULL);
+            date INTEGER NOT NULL,
+            flags JSON NOT NULL
+        );
 
-        CREATE INDEX IF NOT EXISTS messages_starred_thread_id ON messages (JSON_EXTRACT(flags, '$.starred'), thread_id);
+        CREATE INDEX IF NOT EXISTS messages_starred_date ON messages (
+            JSON_EXTRACT(flags, '$.starred'),
+            date
+        );
     """
 
     db = sqlite3.connect(path)
@@ -496,19 +501,20 @@ def db_init(path: str) -> DB:
 
 
 def db_save_message(db: DB, message: Message) -> None:
-    sql = """INSERT OR REPLACE INTO messages (id, thread_id, flags) VALUES (?, ?, ?)"""
+    sql = """INSERT OR REPLACE INTO messages (msg_id, thread_id, date, flags) VALUES (?, ?, ?, ?)"""
+    date = int(message.date.timestamp())
     flags_json = json.dumps(dataclasses.asdict(message.flags))
-    db.execute(sql, (message.msg_id, message.thread_id, flags_json))
+    db.execute(sql, (message.msg_id, message.thread_id, date, flags_json))
     db.commit()
 
 
 def db_load_message_flags(db: DB, messages_by_id: dict[str, Message]) -> None:
     message_ids = list(messages_by_id.keys())
-    sql = f"SELECT * FROM messages WHERE id IN ({','.join('?' for _ in message_ids)})"
+    sql = f"SELECT * FROM messages WHERE msg_id IN ({','.join('?' for _ in message_ids)})"
 
     for row in db.execute(sql, message_ids):
         flags = json.loads(row["flags"])
-        messages_by_id[row["id"]].flags = MessageFlags(**flags)
+        messages_by_id[row["msg_id"]].flags = MessageFlags(**flags)
 
 
 def db_load_read_comments(db: DB, messages_by_id: dict[str, Message]) -> None:
@@ -534,7 +540,7 @@ def db_load_starred_thread_ids(db: DB, page: int = 1) -> list[str]:
         FROM messages
         WHERE JSON_EXTRACT(flags, '$.starred')
         GROUP BY thread_id
-        ORDER BY thread_id DESC
+        ORDER BY date DESC
         LIMIT ?
         OFFSET ?
     """
