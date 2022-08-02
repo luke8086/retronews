@@ -548,314 +548,6 @@ def db_load_starred_thread_ids(db: DB, page: int = 1) -> list[str]:
     return [row["thread_id"] for row in db.execute(sql, (page_size, offset))]
 
 
-def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
-    if flash is not None:
-        app_show_flash(app, flash)
-
-    ret = None
-
-    try:
-        ret = fn()
-    except Exception as e:
-        app_show_flash(app, f"Error: {e}")
-    else:
-        if flash is not None:
-            app_show_flash(app, None)
-
-    return ret
-
-
-def app_show_help_screen(app: AppState) -> None:
-    app.screen.erase()
-    app.screen.addstr(0, 0, HELP_SCREEN)
-    app.screen.refresh()
-    app.screen.getch()
-
-
-def app_show_flash(app: AppState, flash: Optional[str]) -> None:
-    app.flash = flash
-    app_render(app)
-
-
-def app_prompt(app: AppState, prompt: str) -> str:
-    lt = app.layout
-
-    app.screen.insstr(lt.flash_menu_row, 0, prompt.ljust(lt.cols))
-    app.screen.refresh()
-
-    curses.curs_set(1)
-    win = curses.newwin(1, lt.cols - len(prompt), lt.flash_menu_row, len(prompt))
-
-    textbox = curses.textpad.Textbox(win)
-    textbox.stripspaces = True
-    ret = textbox.edit().strip()
-
-    del win
-    curses.curs_set(0)
-
-    return ret
-
-
-def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
-    app.selected_message = message
-
-    if message is None or message.body is None:
-        app.pager_visible = False
-        return
-
-    message.lines = wrap(message.body) if app.raw_mode else msg_build_lines(message)
-
-    if show_pager:
-        app.pager_visible = True
-
-    if app.pager_visible:
-        message.flags.read = True
-        db_save_message(app.db, message)
-        db_load_read_comments(app.db, {message.thread_id: app.messages_by_id[message.thread_id]})
-
-    app.pager_offset = 0
-
-
-def app_load_messages(
-    app: AppState, messages: list[Message], selected_message_id: Optional[str] = None, show_pager: bool = False
-) -> None:
-    if selected_message_id is None and app.selected_message is not None:
-        selected_message_id = app.selected_message.msg_id
-
-    selected_message = None
-
-    for i, message in enumerate(messages):
-        message.index_position = i
-
-        if message.msg_id == selected_message_id:
-            selected_message = message
-
-    if selected_message is None and len(messages) > 0:
-        selected_message = messages[0]
-
-    app.messages = messages
-    app.messages_by_id = {msg.msg_id: msg for msg in messages}
-
-    db_load_message_flags(app.db, app.messages_by_id)
-    db_load_read_comments(app.db, app.messages_by_id)
-
-    app_select_message(app, selected_message, show_pager)
-
-
-def app_load_group(app: AppState, group: Group) -> None:
-    fn = partial(group_fetch_threads, group, db)
-    flash = f"Fetching stories from '{group.label}' (page {group.page})..."
-
-    if (messages := app_safe_run(app, fn, flash=flash)) is None:
-        return
-
-    app_load_messages(app, messages)
-    app.group = group
-
-
-def app_close_thread(app: AppState) -> None:
-    selected_thread_id = app.selected_message.thread_id if app.selected_message else None
-    filtered_messages = [msg_unload(msg) for msg in app.messages if msg.is_thread]
-
-    app_load_messages(app, filtered_messages, selected_message_id=selected_thread_id)
-
-
-def app_open_thread(app: AppState, thread_message: Message) -> None:
-    fn = partial(group_fetch_thread, thread_message.thread_id)
-    flash = f"Fetching thread '{thread_message.thread_id}'..."
-
-    if (new_thread_message := app_safe_run(app, fn, flash=flash)) is None:
-        return
-
-    app_close_thread(app)
-
-    index_pos = thread_message.index_position
-    thread_messages = list(msg_flatten_thread(new_thread_message))
-    new_thread_message.total_comments = len(thread_messages)
-    messages = app.messages[:index_pos] + thread_messages + app.messages[index_pos + 1 :]  # noqa: E203
-
-    app_load_messages(app, messages, selected_message_id=thread_message.msg_id, show_pager=True)
-
-
-def app_get_pager_line_attr(app: AppState, line: str) -> int:
-    if line.startswith("Content-Location: "):
-        return app.colors.tree
-    elif line.startswith("Date: "):
-        return app.colors.date
-    elif line.startswith("From: "):
-        return app.colors.author
-    elif line.startswith("Subject: "):
-        return app.colors.subject
-    elif line.startswith(">>") or line.startswith("> >"):
-        return app.colors.nested_quote
-    elif line.startswith(">"):
-        return app.colors.quote
-    elif line.startswith("  "):
-        return app.colors.code
-    elif line == "~":
-        return app.colors.empty_pager_line
-    else:
-        return 0
-
-
-def app_render_pager_line(app: AppState, row: int, line: str) -> None:
-    line_attr = app_get_pager_line_attr(app, line)
-
-    app.screen.move(row, 0)
-    app.screen.clrtoeol()
-    app.screen.move(row, 0)
-
-    for word in line.split(" "):
-        is_url = word.startswith("http://") or word.startswith("https://")
-        word_attr = app.colors.url if is_url and line_attr == 0 else line_attr
-        app.screen.addstr(word, word_attr)
-        app.screen.addstr(" ")
-
-
-def app_render_pager(app: AppState) -> None:
-    message = app.selected_message
-    start = app.layout.pager_start
-    height = app.layout.pager_height
-
-    if message is None or start is None or height is None:
-        return
-
-    for i in range(height):
-        line = list_get(message.lines, i + app.pager_offset)
-        line = "~" if line is None else line
-        app_render_pager_line(app, i + start, line)
-
-
-def app_render_index_row(app: AppState, row: int, message: Message) -> None:
-    cols = app.layout.cols
-    date = message.date.strftime("%Y-%m-%d %H:%M")
-    author = message.author[:10].ljust(10)
-
-    is_response = message.title.startswith("Re:") and not message.is_thread
-    is_selected = message == app.selected_message
-    hide_title = is_response and row > app.layout.index_start and not message.flags.starred and not is_selected
-    title = "" if hide_title else message.title
-
-    unread = (
-        str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4) if message.is_thread else "    "
-    )
-
-    app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
-
-    if is_selected:
-        app.screen.chgat(row, 0, cols, app.colors.cursor)
-    else:
-        read_attr = 0 if message.is_shown_as_read else curses.A_BOLD
-        subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
-        subject_attr = subject_attr | read_attr
-
-        app.screen.chgat(row, 1, 16, app.colors.date | read_attr)
-        app.screen.chgat(row, 21, 10, app.colors.author | read_attr)
-        app.screen.chgat(row, 35, 4, app.colors.unread_comments | read_attr)
-        app.screen.chgat(row, 42, len(message.index_tree), app.colors.tree)
-        app.screen.chgat(row, 42 + len(message.index_tree), cols - 42 - len(message.index_tree), subject_attr)
-
-
-def app_render_index(app: AppState) -> None:
-    height = app.layout.index_height
-
-    offset = app.selected_message.index_position - height // 2 if app.selected_message else 0
-    offset = min(offset, len(app.messages) - height)
-    offset = max(offset, 0)
-
-    rows_to_render = min(height, len(app.messages) - offset)
-
-    for i in range(rows_to_render):
-        app_render_index_row(app, app.layout.index_start + i, app.messages[i + offset])
-
-
-def app_render_top_menu(app: AppState) -> None:
-    lt = app.layout
-    cols = lt.cols
-    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
-
-
-def app_render_middle_menu(app: AppState) -> None:
-    if (row := app.layout.middle_menu_row) is None:
-        return
-
-    if (message := app.selected_message) is None:
-        return
-
-    if (thread_message := app.messages_by_id.get(message.thread_id)) is None:
-        return
-
-    cols = app.layout.cols
-    total = thread_message.total_comments
-    unread = total - thread_message.read_comments
-
-    text = f"--({unread}/{total} unread)"
-    if thread_message.flags.starred:
-        text += "--(starred thread)"
-    text = text[:cols].ljust(cols, "-")
-
-    app.screen.insstr(row, 0, text, app.colors.menu | curses.A_BOLD)
-
-
-def app_render_bottom_menu(app: AppState) -> None:
-    lt = app.layout
-
-    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
-    app.screen.move(lt.bottom_menu_row, 0)
-
-    for (i, group) in enumerate(GROUP_TABS):
-        is_active = group.provider == app.group.provider and group.name == app.group.name
-        color = app.colors.menu_active if is_active else app.colors.menu
-        attr = color | curses.A_BOLD
-        app.screen.addstr(f"{i+1}:{group.label}  ", attr)
-
-    page_text = f"page: {app.group.page}"
-    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors.menu | curses.A_BOLD)
-
-
-def app_update_layout(app: AppState) -> None:
-    lt = app.layout
-
-    (lt.lines, lt.cols) = app.screen.getmaxyx()
-
-    if lt.lines < 25 or lt.cols < 80:
-        raise Exception("At least 80x25 terminal is required")
-
-    max_index_height = lt.lines - 3
-    lt.index_height = (max_index_height // 3) if app.pager_visible else max_index_height
-
-    lt.middle_menu_row = lt.index_start + lt.index_height if app.pager_visible else None
-    lt.pager_start = lt.index_start + lt.index_height + 1 if app.pager_visible else None
-    lt.pager_height = lt.lines - lt.pager_start - 2 if lt.pager_start is not None else None
-
-    lt.bottom_menu_row = lt.lines - 2
-    lt.flash_menu_row = lt.lines - 1
-
-
-def app_render(app: AppState) -> None:
-    app_update_layout(app)
-    app.screen.erase()
-    app_render_index(app)
-    app_render_pager(app)
-    app_render_top_menu(app)
-    app_render_middle_menu(app)
-    app_render_bottom_menu(app)
-    app.screen.insstr(app.layout.flash_menu_row, 0, app.flash or "")
-    app.screen.refresh()
-
-
-def app_init(screen: Window, db: DB) -> AppState:
-    curses.curs_set(0)
-    curses.use_default_colors()
-
-    group = GROUP_TABS[0]
-
-    app = AppState(screen=screen, colors=Colors(), db=db, group=group)
-    app_load_group(app, app.group)
-
-    return app
-
-
 def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = False) -> Generator[Message, None, None]:
     msg.index_tree = "" if msg.is_thread else f"{prefix}{'└─' if is_last_child else '├─'}> "
     yield msg
@@ -995,21 +687,315 @@ def group_fetch_thread(thread_id: str) -> Message:
     return {"hn": hn_fetch_thread}[provider](source_id)
 
 
-def argparse_formatter_class(prog):
-    return argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
+def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
+    if flash is not None:
+        app_show_flash(app, flash)
+
+    ret = None
+
+    try:
+        ret = fn()
+    except Exception as e:
+        app_show_flash(app, f"Error: {e}")
+    else:
+        if flash is not None:
+            app_show_flash(app, None)
+
+    return ret
 
 
-def logging_init(path: Optional[str]) -> None:
-    if path is None:
-        return logging.disable()
+def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
+    app.selected_message = message
 
-    format = "%(asctime)s %(levelname)s: %(message)s"
-    stream = open(path, "a")
-    logging.basicConfig(format=format, level="DEBUG", stream=stream)
-    logging.debug("Session started")
+    if message is None or message.body is None:
+        app.pager_visible = False
+        return
+
+    message.lines = wrap(message.body) if app.raw_mode else msg_build_lines(message)
+
+    if show_pager:
+        app.pager_visible = True
+
+    if app.pager_visible:
+        message.flags.read = True
+        db_save_message(app.db, message)
+        db_load_read_comments(app.db, {message.thread_id: app.messages_by_id[message.thread_id]})
+
+    app.pager_offset = 0
 
 
-def main(screen: Window, db: DB) -> None:
+def app_load_messages(
+    app: AppState, messages: list[Message], selected_message_id: Optional[str] = None, show_pager: bool = False
+) -> None:
+    if selected_message_id is None and app.selected_message is not None:
+        selected_message_id = app.selected_message.msg_id
+
+    selected_message = None
+
+    for i, message in enumerate(messages):
+        message.index_position = i
+
+        if message.msg_id == selected_message_id:
+            selected_message = message
+
+    if selected_message is None and len(messages) > 0:
+        selected_message = messages[0]
+
+    app.messages = messages
+    app.messages_by_id = {msg.msg_id: msg for msg in messages}
+
+    db_load_message_flags(app.db, app.messages_by_id)
+    db_load_read_comments(app.db, app.messages_by_id)
+
+    app_select_message(app, selected_message, show_pager)
+
+
+def app_load_group(app: AppState, group: Group) -> None:
+    fn = partial(group_fetch_threads, group, db)
+    flash = f"Fetching stories from '{group.label}' (page {group.page})..."
+
+    if (messages := app_safe_run(app, fn, flash=flash)) is None:
+        return
+
+    app_load_messages(app, messages)
+    app.group = group
+
+
+def app_close_thread(app: AppState) -> None:
+    selected_thread_id = app.selected_message.thread_id if app.selected_message else None
+    filtered_messages = [msg_unload(msg) for msg in app.messages if msg.is_thread]
+
+    app_load_messages(app, filtered_messages, selected_message_id=selected_thread_id)
+
+
+def app_open_thread(app: AppState, thread_message: Message) -> None:
+    fn = partial(group_fetch_thread, thread_message.thread_id)
+    flash = f"Fetching thread '{thread_message.thread_id}'..."
+
+    if (new_thread_message := app_safe_run(app, fn, flash=flash)) is None:
+        return
+
+    app_close_thread(app)
+
+    index_pos = thread_message.index_position
+    thread_messages = list(msg_flatten_thread(new_thread_message))
+    new_thread_message.total_comments = len(thread_messages)
+    messages = app.messages[:index_pos] + thread_messages + app.messages[index_pos + 1 :]  # noqa: E203
+
+    app_load_messages(app, messages, selected_message_id=thread_message.msg_id, show_pager=True)
+
+
+def app_update_layout(app: AppState) -> None:
+    lt = app.layout
+
+    (lt.lines, lt.cols) = app.screen.getmaxyx()
+
+    if lt.lines < 25 or lt.cols < 80:
+        raise Exception("At least 80x25 terminal is required")
+
+    max_index_height = lt.lines - 3
+    lt.index_height = (max_index_height // 3) if app.pager_visible else max_index_height
+
+    lt.middle_menu_row = lt.index_start + lt.index_height if app.pager_visible else None
+    lt.pager_start = lt.index_start + lt.index_height + 1 if app.pager_visible else None
+    lt.pager_height = lt.lines - lt.pager_start - 2 if lt.pager_start is not None else None
+
+    lt.bottom_menu_row = lt.lines - 2
+    lt.flash_menu_row = lt.lines - 1
+
+
+def app_show_help_screen(app: AppState) -> None:
+    app.screen.erase()
+    app.screen.addstr(0, 0, HELP_SCREEN)
+    app.screen.refresh()
+    app.screen.getch()
+
+
+def app_show_flash(app: AppState, flash: Optional[str]) -> None:
+    app.flash = flash
+    app_render(app)
+
+
+def app_prompt(app: AppState, prompt: str) -> str:
+    lt = app.layout
+
+    app.screen.insstr(lt.flash_menu_row, 0, prompt.ljust(lt.cols))
+    app.screen.refresh()
+
+    curses.curs_set(1)
+    win = curses.newwin(1, lt.cols - len(prompt), lt.flash_menu_row, len(prompt))
+
+    textbox = curses.textpad.Textbox(win)
+    textbox.stripspaces = True
+    ret = textbox.edit().strip()
+
+    del win
+    curses.curs_set(0)
+
+    return ret
+
+
+def app_render_index_row(app: AppState, row: int, message: Message) -> None:
+    cols = app.layout.cols
+    date = message.date.strftime("%Y-%m-%d %H:%M")
+    author = message.author[:10].ljust(10)
+
+    is_response = message.title.startswith("Re:") and not message.is_thread
+    is_selected = message == app.selected_message
+    hide_title = is_response and row > app.layout.index_start and not message.flags.starred and not is_selected
+    title = "" if hide_title else message.title
+
+    unread = (
+        str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4) if message.is_thread else "    "
+    )
+
+    app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
+
+    if is_selected:
+        app.screen.chgat(row, 0, cols, app.colors.cursor)
+    else:
+        read_attr = 0 if message.is_shown_as_read else curses.A_BOLD
+        subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
+        subject_attr = subject_attr | read_attr
+
+        app.screen.chgat(row, 1, 16, app.colors.date | read_attr)
+        app.screen.chgat(row, 21, 10, app.colors.author | read_attr)
+        app.screen.chgat(row, 35, 4, app.colors.unread_comments | read_attr)
+        app.screen.chgat(row, 42, len(message.index_tree), app.colors.tree)
+        app.screen.chgat(row, 42 + len(message.index_tree), cols - 42 - len(message.index_tree), subject_attr)
+
+
+def app_render_index(app: AppState) -> None:
+    height = app.layout.index_height
+
+    offset = app.selected_message.index_position - height // 2 if app.selected_message else 0
+    offset = min(offset, len(app.messages) - height)
+    offset = max(offset, 0)
+
+    rows_to_render = min(height, len(app.messages) - offset)
+
+    for i in range(rows_to_render):
+        app_render_index_row(app, app.layout.index_start + i, app.messages[i + offset])
+
+
+def app_get_pager_line_attr(app: AppState, line: str) -> int:
+    if line.startswith("Content-Location: "):
+        return app.colors.tree
+    elif line.startswith("Date: "):
+        return app.colors.date
+    elif line.startswith("From: "):
+        return app.colors.author
+    elif line.startswith("Subject: "):
+        return app.colors.subject
+    elif line.startswith(">>") or line.startswith("> >"):
+        return app.colors.nested_quote
+    elif line.startswith(">"):
+        return app.colors.quote
+    elif line.startswith("  "):
+        return app.colors.code
+    elif line == "~":
+        return app.colors.empty_pager_line
+    else:
+        return 0
+
+
+def app_render_pager_line(app: AppState, row: int, line: str) -> None:
+    line_attr = app_get_pager_line_attr(app, line)
+
+    app.screen.move(row, 0)
+    app.screen.clrtoeol()
+    app.screen.move(row, 0)
+
+    for word in line.split(" "):
+        is_url = word.startswith("http://") or word.startswith("https://")
+        word_attr = app.colors.url if is_url and line_attr == 0 else line_attr
+        app.screen.addstr(word, word_attr)
+        app.screen.addstr(" ")
+
+
+def app_render_pager(app: AppState) -> None:
+    message = app.selected_message
+    start = app.layout.pager_start
+    height = app.layout.pager_height
+
+    if message is None or start is None or height is None:
+        return
+
+    for i in range(height):
+        line = list_get(message.lines, i + app.pager_offset)
+        line = "~" if line is None else line
+        app_render_pager_line(app, i + start, line)
+
+
+def app_render_top_menu(app: AppState) -> None:
+    lt = app.layout
+    cols = lt.cols
+    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
+
+
+def app_render_middle_menu(app: AppState) -> None:
+    if (row := app.layout.middle_menu_row) is None:
+        return
+
+    if (message := app.selected_message) is None:
+        return
+
+    if (thread_message := app.messages_by_id.get(message.thread_id)) is None:
+        return
+
+    cols = app.layout.cols
+    total = thread_message.total_comments
+    unread = total - thread_message.read_comments
+
+    text = f"--({unread}/{total} unread)"
+    if thread_message.flags.starred:
+        text += "--(starred thread)"
+    text = text[:cols].ljust(cols, "-")
+
+    app.screen.insstr(row, 0, text, app.colors.menu | curses.A_BOLD)
+
+
+def app_render_bottom_menu(app: AppState) -> None:
+    lt = app.layout
+
+    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
+    app.screen.move(lt.bottom_menu_row, 0)
+
+    for (i, group) in enumerate(GROUP_TABS):
+        is_active = group.provider == app.group.provider and group.name == app.group.name
+        color = app.colors.menu_active if is_active else app.colors.menu
+        attr = color | curses.A_BOLD
+        app.screen.addstr(f"{i+1}:{group.label}  ", attr)
+
+    page_text = f"page: {app.group.page}"
+    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors.menu | curses.A_BOLD)
+
+
+def app_render(app: AppState) -> None:
+    app_update_layout(app)
+    app.screen.erase()
+    app_render_index(app)
+    app_render_pager(app)
+    app_render_top_menu(app)
+    app_render_middle_menu(app)
+    app_render_bottom_menu(app)
+    app.screen.insstr(app.layout.flash_menu_row, 0, app.flash or "")
+    app.screen.refresh()
+
+
+def app_init(screen: Window, db: DB) -> AppState:
+    curses.curs_set(0)
+    curses.use_default_colors()
+
+    group = GROUP_TABS[0]
+
+    app = AppState(screen=screen, colors=Colors(), db=db, group=group)
+    app_load_group(app, app.group)
+
+    return app
+
+
+def app_main(screen: Window, db: DB) -> None:
     app = app_init(screen, db)
 
     while True:
@@ -1019,13 +1005,26 @@ def main(screen: Window, db: DB) -> None:
         KEY_BINDINGS.get(c, cmd_unknown)(app)
 
 
+def setup_logging(path: Optional[str]) -> None:
+    if path is None:
+        return logging.disable()
+
+    format = "%(asctime)s %(levelname)s: %(message)s"
+    stream = open(path, "a")
+    logging.basicConfig(format=format, level="DEBUG", stream=stream)
+    logging.debug("Session started")
+
+
 if __name__ == "__main__":
-    ap = argparse.ArgumentParser(formatter_class=argparse_formatter_class)
+    ap = argparse.ArgumentParser(
+        formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
+    )
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
     args = ap.parse_args()
 
-    logging_init(args.logfile)
+    setup_logging(args.logfile)
+
     db = db_init(args.db)
 
-    curses.wrapper(main, db)
+    curses.wrapper(app_main, db)
