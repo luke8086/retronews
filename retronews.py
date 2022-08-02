@@ -56,6 +56,7 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     curses.KEY_DOWN: lambda app: cmd_next(app),
     curses.KEY_PPAGE: lambda app: cmd_page_up(app),
     curses.KEY_NPAGE: lambda app: cmd_page_down(app),
+    curses.KEY_RESIZE: lambda app: cmd_resize(app),
 } | {ord(str(i)): lambda app, i=i: cmd_load_tab(app, i) for i in range(1, 10)}
 
 HELP_MENU = "q:Quit  ?:Help  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star"
@@ -475,6 +476,10 @@ def cmd_toggle_raw_mode(app: AppState) -> None:
     app_select_message(app, app.selected_message)
 
 
+def cmd_resize(app: AppState) -> None:
+    app_refresh_message(app)
+
+
 def cmd_unknown(app: AppState) -> None:
     app.flash = "Unknown key"
 
@@ -715,14 +720,21 @@ def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Op
     return ret
 
 
+def app_refresh_message(app: AppState) -> None:
+    app.pager_offset = 0
+
+    if (msg := app.selected_message) is not None:
+        msg.lines = msg_build_raw_lines(msg) if app.raw_mode else msg_build_lines(msg)
+
+
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
     app.selected_message = message
+
+    app_refresh_message(app)
 
     if message is None or message.body is None:
         app.pager_visible = False
         return
-
-    message.lines = msg_build_raw_lines(message) if app.raw_mode else msg_build_lines(message)
 
     if show_pager:
         app.pager_visible = True
@@ -731,8 +743,6 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
         message.flags.read = True
         db_save_message(app.db, message)
         db_load_read_comments(app.db, {message.thread_id: app.messages_by_id[message.thread_id]})
-
-    app.pager_offset = 0
 
 
 def app_load_messages(
