@@ -236,7 +236,6 @@ class HTMLParser(html.parser.HTMLParser):
     text: str = ""
     current_link: Optional[str] = None
     in_pre: bool = False
-    after_pre: bool = False
 
     def handle_link_data(self, data: str, link: str) -> None:
         if data == link:
@@ -249,25 +248,20 @@ class HTMLParser(html.parser.HTMLParser):
             # Insert both the text and the full link
             self.text += f"{data} ({link})"
 
-        self.after_pre = False
-
     def handle_data(self, data: str) -> None:
         if self.current_link is not None:
             # Data is inside of a link
             return self.handle_link_data(data, self.current_link)
 
-        if self.after_pre:
-            # Right after </pre>, keep the initial newline
-            self.text += "\n"
+        if not self.in_pre and self.text[-1:] == "\n":
+            # Outside of <pre>, trim any initial spacing in a line
             data = data.lstrip()
 
         if not self.in_pre:
-            # Unless inside of <pre>, replace newlines with spaces
+            # Outside of <pre>, replace newlines with spaces
             data = data.replace("\n", " ")
 
         self.text += data
-
-        self.after_pre = False
 
     def handle_starttag(self, tag: str, attr: list[tuple[str, Optional[str]]]) -> None:
         if tag == "a":
@@ -276,8 +270,6 @@ class HTMLParser(html.parser.HTMLParser):
             self.text += "*"
         elif tag == "pre":
             self.in_pre = True
-
-        self.after_pre = False
 
     def handle_endtag(self, tag: str) -> None:
         if tag == "br":
@@ -289,9 +281,8 @@ class HTMLParser(html.parser.HTMLParser):
         elif tag == "i":
             self.text += "*"
         elif tag == "pre":
+            self.text += "\n"
             self.in_pre = False
-
-        self.after_pre = tag == "pre"
 
 
 def wrap_paragraph(text: str) -> list[str]:
