@@ -564,6 +564,17 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
             yield child
 
 
+def msg_build_raw_lines(msg: Message) -> list[str]:
+    text = msg.body or ""
+
+    # Unescape selected entities for better readability
+    repl = {"&#x2F;": "/", "&#x27;": "'", "&quot;": '"'}
+    for k, v in repl.items():
+        text = text.replace(k, v)
+
+    return reduce(lambda acc, line: acc + wrap(line, width=120, replace_whitespace=False), text.split("\n"), [])
+
+
 def msg_build_lines(msg: Message) -> list[str]:
     lines = [
         f"Content-Location: {msg.content_location}",
@@ -711,7 +722,7 @@ def app_select_message(app: AppState, message: Optional[Message], show_pager: bo
         app.pager_visible = False
         return
 
-    message.lines = wrap(message.body) if app.raw_mode else msg_build_lines(message)
+    message.lines = msg_build_raw_lines(message) if app.raw_mode else msg_build_lines(message)
 
     if show_pager:
         app.pager_visible = True
