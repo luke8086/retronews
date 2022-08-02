@@ -1,4 +1,4 @@
-SCRIPTS = retronews.py
+SCRIPTS = retronews.py tests.py
 
 .PHONY: venv-check
 venv-check:
@@ -22,3 +22,6 @@ lint: venv-check
 	isort $(SCRIPTS)
 	flake8 $(SCRIPTS)
 	mypy $(SCRIPTS)
+
+test:
+	python3 tests.py

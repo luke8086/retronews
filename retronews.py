@@ -20,7 +20,7 @@ import sqlite3
 import sys
 import urllib.request
 from datetime import datetime
-from functools import partial
+from functools import partial, reduce
 from textwrap import wrap
 from typing import (
     Any,
@@ -293,13 +293,6 @@ class HTMLParser(html.parser.HTMLParser):
         self.after_pre = tag == "pre"
 
 
-def parse_html(html: str) -> str:
-    parser = HTMLParser()
-    parser.feed(html)
-    parser.close()
-    return parser.text.strip("\n")
-
-
 def wrap_paragraph(text: str) -> list[str]:
     if len(text) == 0:
         # Preserve empty lines
@@ -316,6 +309,16 @@ def wrap_paragraph(text: str) -> list[str]:
         indent = match[0]
 
     return wrap(text, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
+
+
+def parse_html(html: str) -> list[str]:
+    parser = HTMLParser()
+    parser.feed(html)
+    parser.close()
+
+    raw_lines = parser.text.strip("\n").split("\n")
+
+    return reduce(lambda acc, p: acc + wrap_paragraph(p), raw_lines, [])
 
 
 def fetch(url: str) -> str:
@@ -570,10 +573,7 @@ def msg_build_lines(msg: Message) -> list[str]:
         "",
     ]
 
-    text = parse_html(msg.body or "")
-
-    for p in text.split("\n"):
-        lines += wrap_paragraph(p)
+    lines += parse_html(msg.body or "")
 
     return lines
 
