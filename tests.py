@@ -80,6 +80,24 @@ class TestHtmlParser(unittest.TestCase):
         ]
         self.assertLines(html, lines)
 
+    def test_long_code_blocks(self):
+        # Make sure long code doesn't get wrapped
+        html = (
+            "<p>Lorem ipsum dolor sit amet, pro eu soleat civibus.</p>"
+            + "<p><pre><code>    lambda L: [] if L==[] else qsort([x for x in L[1:] "
+            + "if x< L[0]]) + L[0:1] + qsort([x for x in L[1:] if x>=L[0]])\n</code></pre>\n"
+            + "Mel quas sensibus te. Noster nominati recteque no has.</p>"
+        )
+        lines = [
+            "Lorem ipsum dolor sit amet, pro eu soleat civibus.",
+            "",
+            "    lambda L: [] if L==[] else qsort([x for x in L[1:] if x< L[0]]) + L[0:1] "
+            + "+ qsort([x for x in L[1:] if x>=L[0]])",
+            "",
+            "Mel quas sensibus te. Noster nominati recteque no has.",
+        ]
+        self.assertLines(html, lines)
+
     def assertLines(self, html: str, lines: list[str]) -> None:
         self.assertListEqual(retronews.parse_html(html), lines)
 
