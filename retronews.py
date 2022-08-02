@@ -88,6 +88,7 @@ Press any key to continue...
 
 REQUEST_TIMEOUT = 10
 QUOTE_REX = re.compile(r"^(> ?)+")
+REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 
 T = TypeVar("T")
 
@@ -292,6 +293,9 @@ def wrap_paragraph(text: str) -> list[str]:
 
     if text.startswith("  "):
         # Preserve code indentation
+        return [text]
+
+    if REFERENCE_REX.match(text):
         return [text]
 
     indent = ""

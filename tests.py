@@ -44,8 +44,29 @@ class TestHtmlParser(unittest.TestCase):
         self.assertLines(html, lines)
 
     def test_expanding_links(self):
+        # Ensure links shortened with ellipsis are rendered in full
         html = '<a href="https://example.com/foo/bar">https://example.com/foo...</a>'
         lines = ["https://example.com/foo/bar"]
+        self.assertLines(html, lines)
+
+    def test_link_references(self):
+        # Ensure links in numbered references are not shifted to the next line
+        html = (
+            "<p>Lorem ipsum dolor sit amet, pro eu soleat civibus. Mel quas sensibus</p>"
+            + "<p>[0]: <a>https://long.long.long.long.long.long.long.long.long.long.long.example.com</a></p>"
+            + "<p>[1] - <a>https://long.long.long.long.long.long.long.long.long.long.long.example.com</a></p>"
+            + "<p>[2] <a>https://long.long.long.long.long.long.long.long.long.long.long.example.com</a></p>"
+        )
+        lines = [
+            "Lorem ipsum dolor sit amet, pro eu soleat civibus. Mel quas sensibus",
+            "",
+            "[0]: https://long.long.long.long.long.long.long.long.long.long.long.example.com",
+            "",
+            "[1] - https://long.long.long.long.long.long.long.long.long.long.long.example.com",
+            "",
+            "[2] https://long.long.long.long.long.long.long.long.long.long.long.example.com",
+        ]
+
         self.assertLines(html, lines)
 
     def test_code_blocks(self):
