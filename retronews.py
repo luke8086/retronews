@@ -569,6 +569,11 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
             yield child
 
 
+def msg_sanitize_lines(lines: list[str]) -> list[str]:
+    # Remove null characters
+    return [line.replace("\u0000", "") for line in lines]
+
+
 def msg_build_raw_lines(msg: Message) -> list[str]:
     text = msg.body or ""
 
@@ -725,6 +730,7 @@ def app_refresh_message(app: AppState) -> None:
 
     if (msg := app.selected_message) is not None:
         msg.lines = msg_build_raw_lines(msg) if app.raw_mode else msg_build_lines(msg)
+        msg.lines = msg_sanitize_lines(msg.lines)
 
 
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
