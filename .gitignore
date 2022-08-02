@@ -2,5 +2,4 @@
 /.venv
 /__pycache__
 /cache/*
-/mail
 /tmp/*
