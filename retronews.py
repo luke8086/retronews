@@ -48,6 +48,7 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("p"): lambda app: cmd_prev(app),
     ord("n"): lambda app: cmd_next(app),
     ord("N"): lambda app: cmd_next_unread(app),
+    ord("P"): lambda app: cmd_parent(app),
     ord("R"): lambda app: cmd_reload_page(app),
     ord("<"): lambda app: cmd_load_prev_page(app),
     ord(">"): lambda app: cmd_load_next_page(app),
@@ -70,6 +71,7 @@ Available commands:
   PG UP, PG DOWN          Gp up / down by one page of messages / pager lines
   p, n                    Go to previous / next message
   N                       Go to next unread message
+  P                       Go to parent message
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
   1 - 4                   Change group
@@ -161,6 +163,7 @@ class Message:
     title: str
     body: Optional[str] = None
     lines: list[str] = dataclasses.field(default_factory=list)
+    parent: Optional["Message"] = None
     children: list["Message"] = dataclasses.field(default_factory=list)
     flags: MessageFlags = dataclasses.field(default_factory=MessageFlags)
     read_comments: int = 0
@@ -379,6 +382,11 @@ def cmd_next_unread(app: AppState) -> None:
     message = next((msg for msg in app.messages[pos:] if not msg.is_shown_as_read), None)
     if message is not None:
         app_select_message(app, message)
+
+
+def cmd_parent(app: AppState) -> None:
+    if (msg := app.selected_message) is not None and (parent_msg := msg.parent) is not None:
+        app_select_message(app, parent_msg)
 
 
 def cmd_pager_up(app: AppState) -> None:
@@ -633,24 +641,31 @@ def hn_parse_search_hit(hit: HNSearchHit) -> Message:
     )
 
 
-def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") -> Message:
+def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent: Optional[Message] = None) -> Message:
     thread_id = thread_id or str(entry["id"])
 
     my_title = html.unescape(entry["title"]) if entry["title"] else None
 
+    parent_title = parent.title if parent else ""
+    parent_title = parent_title if parent_title.startswith("Re: ") else f"Re: {parent_title}"
+
     body = f"<p>{entry['url']}</p>" if entry["url"] else ""
     body = f"{body}{entry['text']}" if entry["text"] else body
 
-    return Message(
+    msg = Message(
         msg_id=f"{entry['id']}@hn",
         thread_id=f"{thread_id}@hn",
         content_location=f"https://news.ycombinator.com/item?id={entry['id']}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
         author=entry["author"],
-        title=my_title or f"Re: {parent_title}",
+        title=my_title or parent_title,
         body=body,
-        children=[hn_parse_entry(child, thread_id, my_title or parent_title) for child in entry["children"]],
+        parent=parent,
     )
+
+    msg.children = [hn_parse_entry(child, thread_id, msg) for child in entry["children"]]
+
+    return msg
 
 
 def hn_fetch_threads_by_id(thread_ids: list[str]) -> list[Message]:
