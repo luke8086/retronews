@@ -117,7 +117,7 @@ class Colors:
         self.nested_quote = self._pair(curses.COLOR_BLUE, -1)
         self.quote = self._pair(curses.COLOR_YELLOW, -1)
         self.starred_subject = self._pair(curses.COLOR_CYAN, -1)
-        self.subject = self._pair(curses.COLOR_GREEN, -1)
+        self.header_subject = self._pair(curses.COLOR_GREEN, -1)
         self.tree = self._pair(curses.COLOR_RED, -1)
         self.unread_comments = self._pair(curses.COLOR_GREEN, -1)
         self.url = self._pair(curses.COLOR_MAGENTA, -1)
@@ -929,7 +929,7 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
     elif line.startswith("From: "):
         return app.colors.author
     elif line.startswith("Subject: "):
-        return app.colors.subject
+        return app.colors.header_subject
     elif line.startswith(">>") or line.startswith("> >"):
         return app.colors.nested_quote
     elif line.startswith(">"):
