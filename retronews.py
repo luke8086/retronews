@@ -49,6 +49,8 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("n"): lambda app: cmd_next(app),
     ord("N"): lambda app: cmd_next_unread(app),
     ord("P"): lambda app: cmd_parent(app),
+    ord(";"): lambda app: cmd_mark_set(app),
+    ord(","): lambda app: cmd_mark_jump(app),
     ord("R"): lambda app: cmd_reload_page(app),
     ord("<"): lambda app: cmd_load_prev_page(app),
     ord(">"): lambda app: cmd_load_next_page(app),
@@ -72,21 +74,21 @@ Available commands:
   p, n                    Go to previous / next message
   N                       Go to next unread message
   P                       Go to parent message
+  ; ,                     Set mark, jump to mark & swap (valid within thread)
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
   1 - 4                   Change group
   R                       Refresh current page
-  <, >                    Go to previous / next page
+  < >                     Go to previous / next page
   g                       Go to specific page
-  k, j                    Scroll pager up / down by one line
+  k j                     Scroll pager up / down by one line
   s                       Star / unstar selected message
   S                       Star / unstar current thread
   r                       Toggle raw HTML mode
 
 See https://github.com/luke8086/retronews for more information.
 
-Press any key to continue...
-"""
+Press any key to continue..."""
 
 REQUEST_TIMEOUT = 10
 
@@ -216,6 +218,7 @@ class AppState:
     messages: list[Message] = dataclasses.field(default_factory=list)
     messages_by_id: dict[str, Message] = dataclasses.field(default_factory=dict)
     selected_message: Optional[Message] = None
+    marked_message_id: Optional[str] = None
     layout: Layout = dataclasses.field(default_factory=Layout)
     pager_visible: bool = False
     pager_offset: int = 0
@@ -387,6 +390,20 @@ def cmd_next_unread(app: AppState) -> None:
 def cmd_parent(app: AppState) -> None:
     if (msg := app.selected_message) is not None and (parent_msg := msg.parent) is not None:
         app_select_message(app, parent_msg)
+
+
+def cmd_mark_set(app: AppState) -> None:
+    if (msg := app.selected_message) is not None:
+        app.marked_message_id = msg.msg_id
+    app_show_flash(app, "Mark set")
+
+
+def cmd_mark_jump(app: AppState) -> None:
+    marked_msg = app.messages_by_id.get(app.marked_message_id) if app.marked_message_id else None
+    cmd_mark_set(app)
+    if marked_msg is not None:
+        app_select_message(app, marked_msg)
+    app_show_flash(app, "Mark swapped")
 
 
 def cmd_pager_up(app: AppState) -> None:
