@@ -32,6 +32,7 @@ from typing import (
     TypeVar,
     Union,
     cast,
+    overload,
 )
 
 KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
@@ -349,7 +350,17 @@ def fetch(url: str) -> str:
     return resp
 
 
+@overload
+def list_get(lst: list[T], index: int, default: T) -> T:
+    ...
+
+
+@overload
 def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[T]:
+    ...
+
+
+def list_get(lst, index, default=None):
     return lst[index] if 0 <= index < len(lst) else default
 
 
@@ -999,8 +1010,7 @@ def app_render_pager(app: AppState) -> None:
         return
 
     for i in range(height):
-        line = list_get(message.lines, i + app.pager_offset)
-        line = "~" if line is None else line
+        line = list_get(message.lines, i + app.pager_offset, "~")
         app_render_pager_line(app, i + start, line)
 
 
