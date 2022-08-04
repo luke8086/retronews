@@ -87,14 +87,18 @@ Press any key to continue...
 """
 
 REQUEST_TIMEOUT = 10
-QUOTE_REX = re.compile(r"^(> ?)+")
-REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 
-T = TypeVar("T")
+# Recognize ">text", "> text", ">>text", ">> text", etc.
+QUOTE_REX = re.compile(r"^(> ?)+")
+
+# Recognize "[n] link", "[n]: link", "[n] - link", etc.
+REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 
 # FIXME: Use TypeAlias after migrating to Python 3.10
 Window = NewType("Window", "curses._CursesWindow")
 DB = NewType("DB", "sqlite3.Connection")
+
+T = TypeVar("T")
 
 
 class Colors:
@@ -301,6 +305,7 @@ def wrap_paragraph(text: str) -> list[str]:
         return [text]
 
     if REFERENCE_REX.match(text):
+        # Keep reference numbers with long links in the same line
         return [text]
 
     indent = ""
@@ -313,6 +318,12 @@ def wrap_paragraph(text: str) -> list[str]:
 
 
 def parse_html(html: str) -> list[str]:
+    # This parser works well for HN messages because their markup is simple, and it can do
+    # some custom optimizations, like expanding ellipsis-shortened links, preserving quote
+    # symbols in wrapped lines, and preventing references with long urls from being broken
+    # into separate lines. For other backends it may make more sense to use an external app
+    # (links, w3m, etc)
+
     parser = HTMLParser()
     parser.feed(html)
     parser.close()
@@ -570,7 +581,7 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
 
 
 def msg_sanitize_lines(lines: list[str]) -> list[str]:
-    # Remove null characters
+    # Some HN messages include null characters, which crash ncurses
     return [line.replace("\u0000", "") for line in lines]
 
 
@@ -597,6 +608,11 @@ def msg_build_lines(msg: Message) -> list[str]:
     lines += parse_html(msg.body or "") if not msg.is_deleted else ["<deleted>"]
 
     return lines
+
+
+def msg_update_lines(msg: Message, raw_mode: bool = False) -> None:
+    msg.lines = msg_build_raw_lines(msg) if raw_mode else msg_build_lines(msg)
+    msg.lines = msg_sanitize_lines(msg.lines)
 
 
 def msg_unload(msg: Message) -> Message:
@@ -728,9 +744,9 @@ def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Op
 def app_refresh_message(app: AppState) -> None:
     app.pager_offset = 0
 
+    # Converting html to lines lazily on render for easier debugging
     if (msg := app.selected_message) is not None:
-        msg.lines = msg_build_raw_lines(msg) if app.raw_mode else msg_build_lines(msg)
-        msg.lines = msg_sanitize_lines(msg.lines)
+        msg_update_lines(msg, raw_mode=app.raw_mode)
 
 
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
