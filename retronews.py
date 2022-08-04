@@ -77,7 +77,7 @@ Available commands:
   ; ,                     Set mark, jump to mark & swap (valid within thread)
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
-  1 - 4                   Change group
+  1 - 5                   Change group
   R                       Refresh current page
   < >                     Go to previous / next page
   g                       Go to specific page
