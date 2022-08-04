@@ -107,6 +107,7 @@ class Colors:
         self.date = self._pair(curses.COLOR_CYAN, -1)
         self.default = self._pair(curses.COLOR_WHITE, -1)
         self.empty_pager_line = self._pair(curses.COLOR_GREEN, -1)
+        self.deleted_message_pager_line = self._pair(curses.COLOR_RED, -1)
         self.menu = self._pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
         self.menu_active = self._pair(curses.COLOR_YELLOW, curses.COLOR_BLUE)
         self.nested_quote = self._pair(curses.COLOR_BLUE, -1)
@@ -179,6 +180,10 @@ class Message:
     @property
     def is_thread(self) -> bool:
         return self.msg_id == self.thread_id
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.author is None
 
 
 @dataclasses.dataclass
@@ -589,7 +594,7 @@ def msg_build_lines(msg: Message) -> list[str]:
         "",
     ]
 
-    lines += parse_html(msg.body or "")
+    lines += parse_html(msg.body or "") if not msg.is_deleted else ["<deleted>"]
 
     return lines
 
@@ -917,6 +922,8 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
         return app.colors.code
     elif line == "~":
         return app.colors.empty_pager_line
+    elif line == "<deleted>":
+        return app.colors.deleted_message_pager_line
     else:
         return 0
 
