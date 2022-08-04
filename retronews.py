@@ -152,7 +152,7 @@ class Message:
     thread_id: str
     content_location: str
     date: datetime
-    author: str
+    author: Optional[str]
     title: str
     body: Optional[str] = None
     lines: list[str] = dataclasses.field(default_factory=list)
@@ -213,7 +213,7 @@ class AppState:
 
 class HNSearchHit(TypedDict):
     objectID: int
-    author: str
+    author: Optional[str]
     title: str
     created_at_i: int
     story_text: Optional[str]
@@ -584,7 +584,7 @@ def msg_build_lines(msg: Message) -> list[str]:
     lines = [
         f"Content-Location: {msg.content_location}",
         f"Date: {msg.date.strftime('%Y-%m-%d %H:%M')}",
-        f"From: {msg.author}",
+        f"From: {msg.author or '<unknown>'}",
         f"Subject: {msg.title}",
         "",
     ]
@@ -625,7 +625,7 @@ def hn_parse_entry(entry: HNEntry, thread_id: str = "", parent_title: str = "") 
         thread_id=f"{thread_id}@hn",
         content_location=f"https://news.ycombinator.com/item?id={entry['id']}",
         date=datetime.fromtimestamp(entry["created_at_i"]),
-        author=entry["author"] or "unknown",
+        author=entry["author"],
         title=my_title or f"Re: {parent_title}",
         body=body,
         children=[hn_parse_entry(child, thread_id, my_title or parent_title) for child in entry["children"]],
@@ -860,7 +860,7 @@ def app_prompt(app: AppState, prompt: str) -> str:
 def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     cols = app.layout.cols
     date = message.date.strftime("%Y-%m-%d %H:%M")
-    author = message.author[:10].ljust(10)
+    author = (message.author or "<unknown>")[:10].ljust(10)
 
     is_response = message.title.startswith("Re:") and not message.is_thread
     is_selected = message == app.selected_message
