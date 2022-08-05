@@ -67,6 +67,8 @@ a less compulsive and more focused way.
 - The script is read-only, there are no plans to support voting and posting
 - The message renderer has glitches, but I prefer to keep it simple than solve
   every corner case
+- No config file is planned, since the code is in Python, it's simpler to
+  treat it as its own config and customize directly
 
 ## Related projects
 
