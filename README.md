@@ -55,10 +55,10 @@ It also wouldn't be possible to request threads from older pages or specified by
 The traditional newsreader TUI has several limitations compared to a web app.
 It doesn't support opening multiple stories at once in separate
 tabs, it shows only one message at a time, it's not available on smartphones,
-and it requires one more step to open a link.
+and it requires additional steps to open a link.
 
 
-These limitations can be seen as a benefit :wink:
+These limitations can be seen as a net benefit :wink:
 They force you to process the information at a slower pace, in
 a less compulsive and more focused way.
 
