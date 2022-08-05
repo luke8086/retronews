@@ -145,6 +145,17 @@ DB = NewType("DB", "sqlite3.Connection")
 T = TypeVar("T")
 
 
+class ExitException(Exception):
+    code: int
+    message: str
+
+    def __init__(self, code: int = 0, message: str = ""):
+        self.code = code
+        self.message = message
+
+        super().__init__(message)
+
+
 @dataclasses.dataclass(frozen=True)
 class Group:
     provider: str
@@ -376,9 +387,8 @@ def list_get(lst, index, default=None):
     return lst[index] if 0 <= index < len(lst) else default
 
 
-def cmd_quit(app: AppState):
-    app.db.close()
-    sys.exit(0)
+def cmd_quit(_: AppState):
+    raise ExitException()
 
 
 def cmd_help(app: AppState):
@@ -849,7 +859,7 @@ def app_load_messages(
 
 
 def app_load_group(app: AppState, group: Group) -> None:
-    fn = partial(group_fetch_threads, group, db)
+    fn = partial(group_fetch_threads, group, app.db)
     flash = f"Fetching stories from '{group.label}' (page {group.page})..."
 
     if (messages := app_safe_run(app, fn, flash=flash)) is None:
@@ -889,7 +899,7 @@ def app_update_layout(app: AppState) -> None:
     (lt.lines, lt.cols) = app.screen.getmaxyx()
 
     if lt.lines < 25 or lt.cols < 80:
-        raise Exception("At least 80x25 terminal is required")
+        raise ExitException(1, "At least 80x25 terminal is required")
 
     max_index_height = lt.lines - 3
     lt.index_height = (max_index_height // 3) if app.pager_visible else max_index_height
@@ -1101,7 +1111,7 @@ def app_init(screen: Window, db: DB) -> AppState:
     return app
 
 
-def app_main(screen: Window, db: DB) -> None:
+def app_main(screen: Window, db: DB) -> int:
     app = app_init(screen, db)
 
     while True:
@@ -1131,6 +1141,13 @@ if __name__ == "__main__":
 
     setup_logging(args.logfile)
 
-    db = db_init(args.db)
-
-    curses.wrapper(app_main, db)
+    try:
+        db = db_init(args.db)
+        ret = curses.wrapper(app_main, db)
+    except ExitException as e:
+        if e.message:
+            sys.stderr.write(e.message + "\n")
+        ret = e.code
+    finally:
+        db.close()
+        sys.exit(ret)
