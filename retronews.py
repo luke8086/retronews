@@ -7,6 +7,12 @@
 # the Free Software Foundation.
 #
 
+import sys
+
+if sys.version_info < (3, 9):
+    sys.stderr.write("Python 3.9 or newer is required.\n")
+    sys.exit(1)
+
 import argparse
 import curses
 import curses.textpad
@@ -17,7 +23,6 @@ import logging
 import os
 import re
 import sqlite3
-import sys
 import urllib.request
 from datetime import datetime
 from functools import partial, reduce
