@@ -26,6 +26,7 @@ from typing import (
     Any,
     Callable,
     Generator,
+    Literal,
     NewType,
     Optional,
     TypedDict,
@@ -91,6 +92,44 @@ See https://github.com/luke8086/retronews for more information.
 
 Press any key to continue..."""
 
+Color = Literal[
+    "author",
+    "code",
+    "cursor",
+    "date",
+    "default",
+    "empty_pager_line",
+    "deleted_message_pager_line",
+    "menu",
+    "menu_active",
+    "nested_quote",
+    "quote",
+    "starred_subject",
+    "header_subject",
+    "tree",
+    "unread_comments",
+    "url",
+]
+
+COLORS: dict[Color, tuple[int, int]] = {
+    "author": (curses.COLOR_YELLOW, -1),
+    "code": (curses.COLOR_GREEN, -1),
+    "cursor": (curses.COLOR_BLACK, curses.COLOR_CYAN),
+    "date": (curses.COLOR_CYAN, -1),
+    "default": (curses.COLOR_WHITE, -1),
+    "empty_pager_line": (curses.COLOR_GREEN, -1),
+    "deleted_message_pager_line": (curses.COLOR_RED, -1),
+    "menu": (curses.COLOR_GREEN, curses.COLOR_BLUE),
+    "menu_active": (curses.COLOR_YELLOW, curses.COLOR_BLUE),
+    "nested_quote": (curses.COLOR_BLUE, -1),
+    "quote": (curses.COLOR_YELLOW, -1),
+    "starred_subject": (curses.COLOR_CYAN, -1),
+    "header_subject": (curses.COLOR_GREEN, -1),
+    "tree": (curses.COLOR_RED, -1),
+    "unread_comments": (curses.COLOR_GREEN, -1),
+    "url": (curses.COLOR_MAGENTA, -1),
+}
+
 REQUEST_TIMEOUT = 10
 
 # Recognize ">text", "> text", ">>text", ">> text", etc.
@@ -104,33 +143,6 @@ Window = NewType("Window", "curses._CursesWindow")
 DB = NewType("DB", "sqlite3.Connection")
 
 T = TypeVar("T")
-
-
-class Colors:
-    _last_index: int = 0
-
-    def __init__(self):
-        self.author = self._pair(curses.COLOR_YELLOW, -1)
-        self.code = self._pair(curses.COLOR_GREEN, -1)
-        self.cursor = self._pair(curses.COLOR_BLACK, curses.COLOR_CYAN)
-        self.date = self._pair(curses.COLOR_CYAN, -1)
-        self.default = self._pair(curses.COLOR_WHITE, -1)
-        self.empty_pager_line = self._pair(curses.COLOR_GREEN, -1)
-        self.deleted_message_pager_line = self._pair(curses.COLOR_RED, -1)
-        self.menu = self._pair(curses.COLOR_GREEN, curses.COLOR_BLUE)
-        self.menu_active = self._pair(curses.COLOR_YELLOW, curses.COLOR_BLUE)
-        self.nested_quote = self._pair(curses.COLOR_BLUE, -1)
-        self.quote = self._pair(curses.COLOR_YELLOW, -1)
-        self.starred_subject = self._pair(curses.COLOR_CYAN, -1)
-        self.header_subject = self._pair(curses.COLOR_GREEN, -1)
-        self.tree = self._pair(curses.COLOR_RED, -1)
-        self.unread_comments = self._pair(curses.COLOR_GREEN, -1)
-        self.url = self._pair(curses.COLOR_MAGENTA, -1)
-
-    def _pair(self, fg: int, bg: int) -> int:
-        self._last_index = self._last_index + 1
-        curses.init_pair(self._last_index, fg, bg)
-        return curses.color_pair(self._last_index)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -213,9 +225,9 @@ class Layout:
 @dataclasses.dataclass
 class AppState:
     screen: Window
-    colors: Colors
     db: DB
     group: Group
+    colors: dict[Color, int] = dataclasses.field(default_factory=dict)
     messages: list[Message] = dataclasses.field(default_factory=list)
     messages_by_id: dict[str, Message] = dataclasses.field(default_factory=dict)
     selected_message: Optional[Message] = None
@@ -938,16 +950,16 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
 
     if is_selected:
-        app.screen.chgat(row, 0, cols, app.colors.cursor)
+        app.screen.chgat(row, 0, cols, app.colors["cursor"])
     else:
         read_attr = 0 if message.is_shown_as_read else curses.A_BOLD
-        subject_attr = app.colors.starred_subject if message.flags.starred else app.colors.default
+        subject_attr = app.colors["starred_subject"] if message.flags.starred else app.colors["default"]
         subject_attr = subject_attr | read_attr
 
-        app.screen.chgat(row, 1, 16, app.colors.date | read_attr)
-        app.screen.chgat(row, 21, 10, app.colors.author | read_attr)
-        app.screen.chgat(row, 35, 4, app.colors.unread_comments | read_attr)
-        app.screen.chgat(row, 42, len(message.index_tree), app.colors.tree)
+        app.screen.chgat(row, 1, 16, app.colors["date"] | read_attr)
+        app.screen.chgat(row, 21, 10, app.colors["author"] | read_attr)
+        app.screen.chgat(row, 35, 4, app.colors["unread_comments"] | read_attr)
+        app.screen.chgat(row, 42, len(message.index_tree), app.colors["tree"])
         app.screen.chgat(row, 42 + len(message.index_tree), cols - 42 - len(message.index_tree), subject_attr)
 
 
@@ -966,23 +978,23 @@ def app_render_index(app: AppState) -> None:
 
 def app_get_pager_line_attr(app: AppState, line: str) -> int:
     if line.startswith("Content-Location: "):
-        return app.colors.tree
+        return app.colors["tree"]
     elif line.startswith("Date: "):
-        return app.colors.date
+        return app.colors["date"]
     elif line.startswith("From: "):
-        return app.colors.author
+        return app.colors["author"]
     elif line.startswith("Subject: "):
-        return app.colors.header_subject
+        return app.colors["header_subject"]
     elif line.startswith(">>") or line.startswith("> >"):
-        return app.colors.nested_quote
+        return app.colors["nested_quote"]
     elif line.startswith(">"):
-        return app.colors.quote
+        return app.colors["quote"]
     elif line.startswith("  "):
-        return app.colors.code
+        return app.colors["code"]
     elif line == "~":
-        return app.colors.empty_pager_line
+        return app.colors["empty_pager_line"]
     elif line == "<deleted>":
-        return app.colors.deleted_message_pager_line
+        return app.colors["deleted_message_pager_line"]
     else:
         return 0
 
@@ -996,7 +1008,7 @@ def app_render_pager_line(app: AppState, row: int, line: str) -> None:
 
     for word in line.split(" "):
         is_url = word.startswith("http://") or word.startswith("https://")
-        word_attr = app.colors.url if is_url and line_attr == 0 else line_attr
+        word_attr = app.colors["url"] if is_url and line_attr == 0 else line_attr
         app.screen.addstr(word, word_attr)
         app.screen.addstr(" ")
 
@@ -1017,7 +1029,7 @@ def app_render_pager(app: AppState) -> None:
 def app_render_top_menu(app: AppState) -> None:
     lt = app.layout
     cols = lt.cols
-    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors["menu"] | curses.A_BOLD)
 
 
 def app_render_middle_menu(app: AppState) -> None:
@@ -1039,23 +1051,23 @@ def app_render_middle_menu(app: AppState) -> None:
         text += "--(starred thread)"
     text = text[:cols].ljust(cols, "-")
 
-    app.screen.insstr(row, 0, text, app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(row, 0, text, app.colors["menu"] | curses.A_BOLD)
 
 
 def app_render_bottom_menu(app: AppState) -> None:
     lt = app.layout
 
-    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors.menu)
+    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors["menu"])
     app.screen.move(lt.bottom_menu_row, 0)
 
     for (i, group) in enumerate(GROUP_TABS):
         is_active = group.provider == app.group.provider and group.name == app.group.name
-        color = app.colors.menu_active if is_active else app.colors.menu
+        color = app.colors["menu_active"] if is_active else app.colors["menu"]
         attr = color | curses.A_BOLD
         app.screen.addstr(f"{i+1}:{group.label}  ", attr)
 
     page_text = f"page: {app.group.page}"
-    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors.menu | curses.A_BOLD)
+    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors["menu"] | curses.A_BOLD)
 
 
 def app_render(app: AppState) -> None:
@@ -1070,13 +1082,20 @@ def app_render(app: AppState) -> None:
     app.screen.refresh()
 
 
+def app_init_colors(app: AppState) -> None:
+    for (i, (name, (fg, bg))) in enumerate(COLORS.items()):
+        curses.init_pair(i + 1, fg, bg)
+        app.colors[name] = curses.color_pair(i + 1)
+
+
 def app_init(screen: Window, db: DB) -> AppState:
     curses.curs_set(0)
     curses.use_default_colors()
 
     group = GROUP_TABS[0]
 
-    app = AppState(screen=screen, colors=Colors(), db=db, group=group)
+    app = AppState(screen=screen, db=db, group=group)
+    app_init_colors(app)
     app_load_group(app, app.group)
 
     return app
