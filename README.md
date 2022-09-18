@@ -4,7 +4,12 @@ A Python script for browsing [Hacker News](https://news.ycombinator.com/)
 comments with an interface emulating classical usenet and mail readers,
 like slrn and mutt.
 
-It only requires Python 3.9 and doesn't need installation, you can run it with `./retronews.py`
+It only requires Python 3.9 and doesn't need installation, you can run it with:
+
+```bash
+$ curl -LO https://raw.githubusercontent.com/luke8086/retronews/main/retronews.py
+$ python3 ./retronews.py
+```
 
 For rationale, see the corresponding [blog post](https://luke8086.neocities.org/retronews.html)
 
