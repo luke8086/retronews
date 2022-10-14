@@ -63,3 +63,4 @@ It also wouldn't be possible to request threads from older pages or specified by
 
 - [HN Search @ Algolia](https://hn.algolia.com/about) - The underlying API used to retrieve messages
 - [nntpit](https://github.com/taviso/nntpit) - An NNTP gateway to reddit.com
+- [circumflex](https://github.com/bensadeh/circumflex) - Another, more advanced TUI for HN
