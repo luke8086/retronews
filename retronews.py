@@ -1104,21 +1104,15 @@ def app_init_colors(app: AppState) -> None:
         app.colors[name] = curses.color_pair(i + 1)
 
 
-def app_init(screen: Window, db: DB) -> AppState:
+def app_main(screen: Window, db: DB, initial_tab: int) -> int:
     curses.curs_set(0)
     curses.use_default_colors()
 
-    group = GROUP_TABS[0]
+    group = GROUP_TABS[initial_tab - 1]
 
     app = AppState(screen=screen, db=db, group=group)
     app_init_colors(app)
     app_load_group(app, app.group)
-
-    return app
-
-
-def app_main(screen: Window, db: DB) -> int:
-    app = app_init(screen, db)
 
     while True:
         app_render(app)
@@ -1138,18 +1132,21 @@ def setup_logging(path: Optional[str]) -> None:
 
 
 if __name__ == "__main__":
+    tab_choices = range(1, len(GROUP_TABS) + 1)
+
     ap = argparse.ArgumentParser(
         formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
     )
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
+    ap.add_argument("-t", "--tab", metavar="TAB", type=int, default=1, choices=tab_choices, help="initial tab")
     args = ap.parse_args()
 
     setup_logging(args.logfile)
 
     try:
         db = db_init(args.db)
-        ret = curses.wrapper(app_main, db)
+        ret = curses.wrapper(app_main, db, args.tab)
     except ExitException as e:
         if e.message:
             sys.stderr.write(e.message + "\n")
