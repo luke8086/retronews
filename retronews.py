@@ -1143,7 +1143,13 @@ if __name__ == "__main__":
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
     ap.add_argument("-t", "--tab", metavar="TAB", type=int, default=1, choices=tab_choices, help="initial tab")
+    ap.add_argument("-r", "--render", metavar="PATH", default=None, help="render raw html message and quit")
     args = ap.parse_args()
+
+    if (path := args.render) is not None:
+        with open(path) as fp:
+            print("\n".join(parse_html(sanitize_text(fp.read()))))
+        sys.exit(0)
 
     setup_logging(args.logfile)
 
