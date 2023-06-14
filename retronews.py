@@ -49,6 +49,7 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("x"): lambda app: cmd_close(app),
     ord("s"): lambda app: cmd_star(app),
     ord("S"): lambda app: cmd_star_thread(app),
+    ord("D"): lambda app: cmd_dump(app),
     ord("r"): lambda app: cmd_toggle_raw_mode(app),
     ord("k"): lambda app: cmd_up(app),
     ord("j"): lambda app: cmd_down(app),
@@ -542,6 +543,18 @@ def cmd_star_thread(app: AppState) -> None:
     thread_msg.flags.starred = not thread_msg.flags.starred
     db_save_message(app.db, thread_msg)
     cmd_next(app)
+
+
+def cmd_dump(app: AppState) -> None:
+    if (msg := app.selected_message) is None:
+        return
+
+    filename = f"{msg.msg_id}.html"
+
+    with open(filename, "w") as fp:
+        fp.write(msg.body or "")
+
+    app_show_flash(app, f"Message body dumped to {filename}")
 
 
 def cmd_toggle_raw_mode(app: AppState) -> None:
