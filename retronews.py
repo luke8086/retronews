@@ -163,18 +163,17 @@ class ExitException(Exception):
 
 @dataclasses.dataclass(frozen=True)
 class Group:
-    provider: str
-    name: str
-    label: str = ""
+    label: str
+    fetch: Callable[[DB, int], list["Message"]]
     page: int = 1
 
 
 GROUP_TABS: list[Group] = [
-    Group(provider="hn", name="news", label="Front Page"),
-    Group(provider="hn-new", name="", label="New"),
-    Group(provider="hn", name="ask", label="Ask HN"),
-    Group(provider="hn", name="show", label="Show HN"),
-    Group(provider="starred", name="", label="Starred"),
+    Group(label="Front Page", fetch=lambda db, page: hn_fetch_threads("news", page)),
+    Group(label="New", fetch=lambda db, page: hn_fetch_new_threads(page)),
+    Group(label="Ask HN", fetch=lambda db, page: hn_fetch_threads("ask", page)),
+    Group(label="Show HN", fetch=lambda db, page: hn_fetch_threads("show", page)),
+    Group(label="Starred", fetch=lambda db, page: group_fetch_starred_threads(db, page)),
 ]
 
 
@@ -778,17 +777,6 @@ def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
     return threads
 
 
-def group_fetch_threads(group: Group, db: DB) -> list[Message]:
-    if group.provider == "hn":
-        return hn_fetch_threads(group.name, group.page)
-    elif group.provider == "hn-new":
-        return hn_fetch_new_threads(group.page)
-    elif group.provider == "starred":
-        return group_fetch_starred_threads(db, group.page)
-    else:
-        return []
-
-
 def group_fetch_thread(thread_id: str) -> Message:
     (source_id, provider) = thread_id.split("@")
     return {"hn": hn_fetch_thread}[provider](source_id)
@@ -864,7 +852,7 @@ def app_load_messages(
 
 
 def app_load_group(app: AppState, group: Group) -> None:
-    fn = partial(group_fetch_threads, group, app.db)
+    fn = partial(group.fetch, app.db, group.page)
     flash = f"Fetching stories from '{group.label}' (page {group.page})..."
 
     if (messages := app_safe_run(app, fn, flash=flash)) is None:
@@ -1076,7 +1064,7 @@ def app_render_bottom_menu(app: AppState) -> None:
     app.screen.move(lt.bottom_menu_row, 0)
 
     for (i, group) in enumerate(GROUP_TABS):
-        is_active = group.provider == app.group.provider and group.name == app.group.name
+        is_active = group.label == app.group.label
         color = app.colors["menu_active"] if is_active else app.colors["menu"]
         attr = color | curses.A_BOLD
         app.screen.addstr(f"{i+1}:{group.label}  ", attr)
