@@ -175,6 +175,7 @@ GROUP_TABS: list[Group] = [
     Group(label="New HN", fetch=lambda db, page: hn_fetch_new_threads(page)),
     Group(label="Ask HN", fetch=lambda db, page: hn_fetch_threads("ask", page)),
     Group(label="Show HN", fetch=lambda db, page: hn_fetch_threads("show", page)),
+    Group(label="Lobsters", fetch=lambda db, page: lb_fetch_threads("", page)),
     Group(label="Starred", fetch=lambda db, page: group_fetch_starred_threads(db, page)),
 ]
 
@@ -276,6 +277,30 @@ class HNEntry(TypedDict):
     text: Optional[str]
     title: Optional[str]
     url: Optional[str]
+
+
+class LBUser(TypedDict):
+    username: str
+
+
+class LBThread(TypedDict):
+    short_id: str
+    short_id_url: str
+    created_at: str
+    title: str
+    url: str
+    description: str
+    submitter_user: LBUser
+    comment_count: int
+    comments: Optional[list[Any]]
+
+
+class LBComment(TypedDict):
+    short_id: str
+    created_at: str
+    url: str
+    commenting_user: LBUser
+    parent_comment: Optional[str]
 
 
 class HTMLParser(html.parser.HTMLParser):
@@ -768,6 +793,55 @@ def hn_fetch_thread(entry_id: Union[str, int]) -> Message:
     return hn_parse_entry(entry)
 
 
+def lb_parse_thread(thread: LBThread) -> Message:
+    comments = {}
+
+    ret = Message(
+        msg_id=f"{thread['short_id']}@lb",
+        thread_id=f"{thread['short_id']}@lb",
+        content_location=thread["short_id_url"],
+        date=datetime.fromtimestamp(datetime.fromisoformat(thread["created_at"]).timestamp()),
+        author=thread["submitter_user"]["username"],
+        title=thread["title"],
+        body=f"<p>{thread['url']}</p>{thread['description']}",
+        total_comments=thread["comment_count"] + 1,
+    )
+
+    for comment in thread.get("comments", []) or []:
+        comments[comment["short_id"]] = Message(
+            msg_id=f"{comment['short_id']}@lb",
+            thread_id=f"{thread['short_id']}@lb",
+            content_location=comment["url"],
+            date=datetime.fromtimestamp(datetime.fromisoformat(comment["created_at"]).timestamp()),
+            author=comment["commenting_user"]["username"],
+            title=f"Re: {thread['title']}",
+            body=comment["comment"],
+            children=[],
+        )
+
+    for comment in thread.get("comments", []) or []:
+        msg = comments[comment["short_id"]]
+        parent_msg = comments[comment["parent_comment"]] if comment["parent_comment"] else ret
+        msg.parent = parent_msg
+        parent_msg.children.append(msg)
+
+    return ret
+
+
+def lb_fetch_threads(group: str = "", page: int = 1) -> list[Message]:
+    resp = fetch(f"https://lobste.rs/page/{page}.json")
+    threads: list[LBThread] = json.loads(resp)
+
+    return [lb_parse_thread(thread) for thread in threads]
+
+
+def lb_fetch_thread(entry_id: str) -> Message:
+    resp = fetch(f"https://lobste.rs/s/{entry_id}.json")
+    thread: LBThread = json.loads(resp)
+
+    return lb_parse_thread(thread)
+
+
 def group_set_page(group: Group, page: int) -> Group:
     return dataclasses.replace(group, page=page)
 
@@ -794,8 +868,13 @@ def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
 
 
 def group_fetch_thread(thread_id: str) -> Message:
+    fetchers = {
+        "hn": hn_fetch_thread,
+        "lb": lb_fetch_thread,
+    }
     (source_id, provider) = thread_id.split("@")
-    return {"hn": hn_fetch_thread}[provider](source_id)
+
+    return fetchers[provider](source_id)
 
 
 def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
