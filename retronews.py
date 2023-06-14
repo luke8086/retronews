@@ -861,6 +861,9 @@ def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
     for provider, thread_ids in threads_by_provider.items():
         if provider == "hn":
             threads += hn_fetch_threads_by_id(thread_ids)
+        elif provider == "lb":
+            # FIXME: Find way to fetch multiple threads by id at once
+            threads += [lb_fetch_thread(x) for x in thread_ids]
 
     threads.sort(key=lambda x: x.date, reverse=True)
 
