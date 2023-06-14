@@ -16,7 +16,7 @@ class TestHtmlParser(unittest.TestCase):
         with open(html_path) as fp:
             html = fp.read()
 
-        actual = "\n".join(retronews.parse_html(html)).strip()
+        actual = "\n".join(retronews.parse_html(retronews.sanitize_text(html))).strip()
 
         if not os.path.exists(out_path):
             with open(out_path, "w") as fp:

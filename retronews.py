@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sqlite3
+import unicodedata
 import urllib.request
 from datetime import datetime
 from functools import partial, reduce
@@ -352,6 +353,18 @@ def wrap_paragraph(text: str) -> list[str]:
     return wrap(text, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
 
 
+def sanitize_text(text: Optional[str]) -> str:
+    # For safety, remove any control characters except for \n and \t
+    # At least on HN some messages contain \x00 characters
+
+    text = text or ""
+    allowed_cc = set(("\n", "\t"))
+    chars = (c for c in text if c in allowed_cc or unicodedata.category(c) != "Cc")
+    text = "".join(chars)
+
+    return text
+
+
 def parse_html(html: str) -> list[str]:
     # This parser works well for HN messages because their markup is simple, and it can do
     # some custom optimizations, like expanding ellipsis-shortened links, preserving quote
@@ -655,13 +668,8 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
             yield child
 
 
-def msg_sanitize_lines(lines: list[str]) -> list[str]:
-    # Some HN messages include null characters, which crash ncurses
-    return [line.replace("\u0000", "") for line in lines]
-
-
 def msg_build_raw_lines(msg: Message) -> list[str]:
-    text = msg.body or ""
+    text = sanitize_text(msg.body)
 
     # Unescape selected entities for better readability
     repl = {"&#x2F;": "/", "&#x27;": "'", "&quot;": '"'}
@@ -680,14 +688,9 @@ def msg_build_lines(msg: Message) -> list[str]:
         "",
     ]
 
-    lines += parse_html(msg.body or "") if not msg.is_deleted else ["<deleted>"]
+    lines += parse_html(sanitize_text(msg.body)) if not msg.is_deleted else ["<deleted>"]
 
     return lines
-
-
-def msg_update_lines(msg: Message, raw_mode: bool = False) -> None:
-    msg.lines = msg_build_raw_lines(msg) if raw_mode else msg_build_lines(msg)
-    msg.lines = msg_sanitize_lines(msg.lines)
 
 
 def msg_unload(msg: Message) -> Message:
@@ -817,7 +820,7 @@ def app_refresh_message(app: AppState) -> None:
 
     # Converting html to lines lazily on render for easier debugging
     if (msg := app.selected_message) is not None:
-        msg_update_lines(msg, raw_mode=app.raw_mode)
+        msg.lines = msg_build_raw_lines(msg) if app.raw_mode else msg_build_lines(msg)
 
 
 def app_select_message(app: AppState, message: Optional[Message], show_pager: bool = False) -> None:
