@@ -171,8 +171,8 @@ class Group:
 
 
 GROUP_TABS: list[Group] = [
-    Group(label="Front Page", fetch=lambda db, page: hn_fetch_threads("news", page)),
-    Group(label="New", fetch=lambda db, page: hn_fetch_new_threads(page)),
+    Group(label="Front HN", fetch=lambda db, page: hn_fetch_threads("news", page)),
+    Group(label="New HN", fetch=lambda db, page: hn_fetch_new_threads(page)),
     Group(label="Ask HN", fetch=lambda db, page: hn_fetch_threads("ask", page)),
     Group(label="Show HN", fetch=lambda db, page: hn_fetch_threads("show", page)),
     Group(label="Starred", fetch=lambda db, page: group_fetch_starred_threads(db, page)),
