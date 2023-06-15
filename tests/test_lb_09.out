@@ -1,0 +1,21 @@
+> Lorem ipsum dolor sit amet, consectetur adipiscing elit
+> Lorem ipsum dolor sit amet, consectetur adipiscing elit
+> | def hello_world():
+> |   print('hello')
+> |   if True:
+> |     print('world')
+> |   print('!!!')
+> | 
+> | hello_world()
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit
+
+| def hello_world():
+|   print('hello')
+|   if True:
+|     print('world')
+|   print('!!!')
+| 
+| hello_world()
+
+Lorem ipsum dolor sit amet, consectetur adipiscing elit
