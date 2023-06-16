@@ -25,6 +25,7 @@ import re
 import sqlite3
 import unicodedata
 import urllib.request
+import webbrowser
 from datetime import datetime
 from functools import partial, reduce
 from textwrap import wrap
@@ -47,6 +48,7 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("?"): lambda app: cmd_help(app),
     ord("\n"): lambda app: cmd_open(app),
     ord(" "): lambda app: cmd_open(app),
+    ord("o"): lambda app: cmd_show_links(app),
     ord("x"): lambda app: cmd_close(app),
     ord("s"): lambda app: cmd_star(app),
     ord("S"): lambda app: cmd_star_thread(app),
@@ -86,6 +88,7 @@ Available commands:
   ; ,                     Set mark, jump to mark & swap (valid within thread)
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
+  o                       Select link and open in browser
   1 - 5                   Change group
   R                       Refresh current page
   < >                     Go to previous / next page
@@ -647,6 +650,10 @@ def cmd_quit(_: AppState):
 
 def cmd_help(app: AppState):
     app_show_help_screen(app)
+
+
+def cmd_show_links(app: AppState):
+    app_show_links_screen(app)
 
 
 def cmd_up(app: AppState) -> None:
@@ -1219,6 +1226,37 @@ def app_show_help_screen(app: AppState) -> None:
     app.screen.addstr(0, 0, HELP_SCREEN)
     app.screen.refresh()
     app.screen.getch()
+
+
+def app_show_links_screen(app: AppState) -> None:
+    app.screen.erase()
+    app.screen.addstr(0, 0, "Select link to open:")
+    app.screen.refresh()
+
+    lines = app.selected_message.lines if app.selected_message is not None else []
+
+    keys = "1234567890abcdefghij"
+    urls = URL_REX.findall(" ".join(lines))
+    items = dict(zip((ord(k) for k in keys), urls))
+
+    if len(items) == 0:
+        return app_show_flash(app, "No links available for opening")
+
+    for (i, (key, url)) in enumerate(items.items()):
+        app.screen.addstr(i + 2, 0, f"{chr(key)} - {url}")
+
+    key = app.screen.getch()
+
+    if key not in items.keys():
+        return app_show_flash(app, "Unknown key")
+
+    url = items[key]
+
+    app_show_flash(app, f"Opening {url}")
+    webbrowser.open(url)
+
+    # Refresh window in case a terminal browser was used
+    app.screen.clearok(True)
 
 
 def app_show_flash(app: AppState, flash: Optional[str]) -> None:
