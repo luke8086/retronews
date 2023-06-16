@@ -149,7 +149,7 @@ QUOTE_REX = re.compile(r"^(> ?)+")
 REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 
 # Recognize http/https URLs
-URL_REX = re.compile(r"(https?://[^\s\),]+)")
+URL_REX = re.compile(r"(https?://[^\s\)\"<,]+[^\s\)\"<,\.])")
 
 # FIXME: Use TypeAlias after migrating to Python 3.10
 Window = NewType("Window", "curses._CursesWindow")
