@@ -303,71 +303,91 @@ class LBComment(TypedDict):
     parent_comment: Optional[str]
 
 
-class HTMLParser(html.parser.HTMLParser):
-    text: str = ""
-    current_link: Optional[str] = None
-    in_pre: bool = False
+HTML_BLOCK_TAGS = set(("root", "p", "pre", "blockquote", "ul", "ol", "li", "hr"))
+HTML_INLINE_TAGS = set(("code", "a", "em", "strong", "b", "br"))
+HTML_KNOWN_TAGS = HTML_BLOCK_TAGS.union(HTML_INLINE_TAGS)
+HTML_AUTOCLOSE_TAGS = set(("hr", "br"))
 
-    def handle_link_data(self, data: str, link: str) -> None:
-        if data == link:
-            # Data is identical to the link
-            self.text += data
-        elif data.endswith("...") and link.startswith(data[:-3]):
-            # Replace HN-shortened URL with the full one
-            self.text += link
-        else:
-            # Insert both the text and the full link
-            self.text += f"{data} ({link})"
+
+@dataclasses.dataclass
+class HTMLNode:
+    tag: str
+
+    parent: Optional["HTMLNode"] = None
+
+    prev_sibling: Optional["HTMLNode"] = None
+    next_sibling: Optional["HTMLNode"] = None
+
+    first_child: Optional["HTMLNode"] = None
+    last_child: Optional["HTMLNode"] = None
+
+    attrs: dict[str, Optional[str]] = dataclasses.field(default_factory=dict)
+    text: str = ""
+    pre: bool = False
+
+
+class HTMLParser(html.parser.HTMLParser):
+    root_node: HTMLNode
+    current_node: HTMLNode
+    pre_level = 0
+
+    def __init__(self):
+        super().__init__()
+
+        self.root_node = self.current_node = HTMLNode(tag="root")
 
     def handle_data(self, data: str) -> None:
-        if self.current_link is not None:
-            # Data is inside of a link
-            return self.handle_link_data(data, self.current_link)
+        if self.current_node.tag in HTML_AUTOCLOSE_TAGS:
+            self.handle_endtag(self.current_node.tag)
 
-        if not self.in_pre and self.text[-1:] == "\n":
-            # Outside of <pre>, trim any initial spacing in a line
-            data = data.lstrip()
+        node = HTMLNode(tag="text", text=data, pre=self.pre_level > 0)
+        html_node_append(self.current_node, node)
 
-        if not self.in_pre:
-            # Outside of <pre>, replace newlines with spaces
-            data = data.replace("\n", " ")
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, Optional[str]]]) -> None:
+        if self.current_node.tag in HTML_AUTOCLOSE_TAGS:
+            self.handle_endtag(self.current_node.tag)
 
-        self.text += data
+        if tag not in HTML_KNOWN_TAGS:
+            return
 
-    def handle_starttag(self, tag: str, attr: list[tuple[str, Optional[str]]]) -> None:
-        if tag == "a":
-            self.current_link = dict(attr).get("href")
-        elif tag == "i":
-            self.text += "*"
-        elif tag == "pre":
-            self.in_pre = True
+        if tag == "pre":
+            self.pre_level += 1
+
+        node = HTMLNode(tag=tag, attrs=dict(attrs), pre=self.pre_level > 0)
+        html_node_append(self.current_node, node)
+        self.current_node = node
 
     def handle_endtag(self, tag: str) -> None:
-        if tag == "br":
-            self.text += "\n"
-        elif tag == "p":
-            self.text += "\n\n"
-        elif tag == "a":
-            self.current_link = None
-        elif tag == "i":
-            self.text += "*"
-        elif tag == "pre":
-            self.text += "\n"
-            self.in_pre = False
+        if tag not in HTML_KNOWN_TAGS:
+            return
+
+        if tag == "pre":
+            self.pre_level = max(0, self.pre_level - 1)
+
+        while True:
+            node = self.current_node
+
+            if node.parent is None:
+                break
+
+            self.current_node = node.parent
+
+            if node.tag == tag:
+                break
 
 
-def wrap_paragraph(text: str) -> list[str]:
+def text_wrap(text: str, width=70) -> str:
     if len(text) == 0:
         # Preserve empty lines
-        return [""]
+        return ""
 
     if text.startswith("  "):
         # Preserve code indentation
-        return [text]
+        return text
 
     if REFERENCE_REX.match(text):
         # Keep reference numbers with long links in the same line
-        return [text]
+        return text
 
     indent = ""
 
@@ -375,10 +395,23 @@ def wrap_paragraph(text: str) -> list[str]:
         # Preserve quotation symbols in subsequent lines
         indent = match[0]
 
-    return wrap(text, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
+    lines = wrap(text, width, subsequent_indent=indent, break_on_hyphens=False, break_long_words=False)
+    lines = [line.rstrip() for line in lines]
+
+    return "\n".join(lines)
 
 
-def sanitize_text(text: Optional[str]) -> str:
+def text_indent(text: str, initial: str, recurring: Optional[str] = None) -> str:
+    if recurring is None:
+        recurring = initial
+
+    lines = text.split("\n")
+    lines = [(initial + lines[0]).rstrip()] + [(recurring + line).rstrip() for line in lines[1:]]
+
+    return "\n".join(lines)
+
+
+def text_sanitize(text: Optional[str]) -> str:
     # For safety, remove any control characters except for \n and \t
     # At least on HN some messages contain \x00 characters
 
@@ -390,20 +423,191 @@ def sanitize_text(text: Optional[str]) -> str:
     return text
 
 
-def parse_html(html: str) -> list[str]:
-    # This parser works well for HN messages because their markup is simple, and it can do
+def html_node_children(parent: HTMLNode) -> list[HTMLNode]:
+    ret: list[HTMLNode] = []
+    node = parent.first_child
+
+    while node is not None:
+        ret.append(node)
+        node = node.next_sibling
+
+    return ret
+
+
+def html_node_append(parent: HTMLNode, child: HTMLNode) -> None:
+    if parent.first_child is None:
+        parent.first_child = child
+
+    if parent.last_child is not None:
+        parent.last_child.next_sibling = child
+        child.prev_sibling = parent.last_child
+
+    parent.last_child = child
+    child.parent = parent
+
+
+def html_node_unlink(node: HTMLNode) -> None:
+    if node.prev_sibling:
+        node.prev_sibling.next_sibling = node.next_sibling
+
+    if node.next_sibling:
+        node.next_sibling.prev_sibling = node.prev_sibling
+
+    if node.parent and node.parent.first_child is node:
+        node.parent.first_child = node.next_sibling
+
+    if node.parent and node.parent.last_child is node:
+        node.parent.last_child = node.prev_sibling
+
+    node.parent = node.prev_sibling = node.next_sibling = None
+
+
+def html_node_dump(node: HTMLNode) -> str:
+    lines = []
+    lines.append(f"{node.tag} {repr(node.attrs)}")
+
+    for child in html_node_children(node):
+        if child.tag == "text":
+            lines.append("  text " + repr(child.text))
+        else:
+            lines += ["  " + line for line in html_node_dump(child).split("\n")]
+
+    return "\n".join(lines)
+
+
+def html_node_trim_whitespace(node: HTMLNode) -> None:
+    if node.pre:
+        node.text = node.text.rstrip("\r\n\t ")
+        return
+
+    text = node.text.strip("\r\n\t ")
+    text = re.sub(r"[\r\n\t ]+", " ", text)
+    text = text.replace("\x00", "\n")
+    text = re.sub(r" *\n *", "\n", text)
+
+    node.text = text
+
+
+def html_node_process_inline(node: HTMLNode, inline=False) -> str:
+    """Traverse tree flattening all inline nodes into text nodes"""
+
+    if node.tag not in HTML_BLOCK_TAGS:
+        # Never disable inline if already enabled
+        inline = True
+
+    text = "".join(html_node_process_inline(c, inline) for c in html_node_children(node))
+
+    if not inline:
+        return ""
+
+    if node.tag == "text":
+        text = node.text
+    elif node.tag == "br":
+        text = "\x00"
+    elif node.tag == "em" or node.tag == "i":
+        text = f"/{text}/"
+    elif node.tag == "strong" or node.tag == "b":
+        text = f"*{text}*"
+    elif node.tag == "code" and not node.pre:
+        text = f"`{text}`"
+    elif node.tag == "a":
+        href = node.attrs.get("href", "") or ""
+        if text.endswith("...") and href.startswith(text[:-3]):
+            # Workaround for link formatting on HN
+            text = href
+        elif text != href:
+            text += " " + href
+
+    node.tag = "text"
+    node.text = text
+    node.first_child = node.last_child = None
+
+    return text
+
+
+def html_node_process_text(node: HTMLNode):
+    """Traverse tree merging, trimming and pruning text nodes"""
+
+    for child in html_node_children(node):
+        html_node_process_text(child)
+
+    # Merge adjacent text nodes
+    for child in html_node_children(node):
+        prev = child.prev_sibling
+        if child.tag == "text" and prev is not None and prev.tag == "text" and child.pre == prev.pre:
+            child.text = prev.text + child.text
+            html_node_unlink(prev)
+
+    # Trim whitespace from text nodes
+    for child in html_node_children(node):
+        if child.tag == "text":
+            html_node_trim_whitespace(child)
+
+    # Remove empty text nodes
+    for child in html_node_children(node):
+        if child.tag == "text" and child.text == "":
+            html_node_unlink(child)
+
+
+def html_node_render_block(node: HTMLNode, width=70) -> str:
+    if node.tag == "blockquote" or node.tag == "li" or node.tag == "pre":
+        width -= 2
+
+    parts = []
+
+    if node.tag == "hr":
+        parts.append("-" * width)
+
+    for child in html_node_children(node):
+        if child.tag == "text" and child.pre:
+            parts.append(child.text)
+
+        elif child.tag == "text" and not child.pre:
+            subparts = [text_wrap(p, width) for p in child.text.split("\n")]
+            parts.append("\n".join(subparts))
+
+        else:
+            parts.append(html_node_render_block(child, width))
+
+        if child.next_sibling is not None and child.tag != "li":
+            parts.append("")
+
+    text = "\n".join(parts)
+
+    if node.tag == "blockquote":
+        text = text_indent(text, "> ")
+    elif node.tag == "pre":
+        text = text_indent(text, "| ")
+    elif node.tag == "li":
+        text = text_indent(text, "- ", "  ")
+
+    return text
+
+
+def html_render(html: str) -> str:
+    # This renderer works well for HN messages because their markup is simple, and it can do
     # some custom optimizations, like expanding ellipsis-shortened links, preserving quote
     # symbols in wrapped lines, and preventing references with long urls from being broken
     # into separate lines. For other backends it may make more sense to use an external app
     # (links, w3m, etc)
 
+    html = text_sanitize(html)
+
     parser = HTMLParser()
     parser.feed(html)
     parser.close()
 
-    raw_lines = parser.text.strip("\n").split("\n")
+    node = parser.root_node
 
-    return reduce(lambda acc, p: acc + wrap_paragraph(p), raw_lines, [])
+    log_sep = "\n" + "-" * 80 + "\n"
+    logging.debug(f"Initial HTML tree{log_sep}{html_node_dump(node)}{log_sep}")
+
+    html_node_process_inline(node)
+    html_node_process_text(node)
+
+    logging.debug(f"Processed HTML tree{log_sep}{html_node_dump(node)}{log_sep}")
+
+    return html_node_render_block(node)
 
 
 def fetch(url: str) -> str:
@@ -694,7 +898,7 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
 
 
 def msg_build_raw_lines(msg: Message) -> list[str]:
-    text = sanitize_text(msg.body)
+    text = text_sanitize(msg.body)
 
     # Unescape selected entities for better readability
     repl = {"&#x2F;": "/", "&#x27;": "'", "&quot;": '"'}
@@ -713,7 +917,7 @@ def msg_build_lines(msg: Message) -> list[str]:
         "",
     ]
 
-    lines += parse_html(sanitize_text(msg.body)) if not msg.is_deleted else ["<deleted>"]
+    lines += html_render(msg.body or "").split("\n") if not msg.is_deleted else ["<deleted>"]
 
     return lines
 
@@ -1090,7 +1294,7 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
         return app.colors["nested_quote"]
     elif line.startswith(">"):
         return app.colors["quote"]
-    elif line.startswith("  "):
+    elif line.startswith("| "):
         return app.colors["code"]
     elif line == "~":
         return app.colors["empty_pager_line"]
@@ -1211,7 +1415,7 @@ def setup_logging(path: Optional[str]) -> None:
         return logging.disable()
 
     format = "%(asctime)s %(levelname)s: %(message)s"
-    stream = open(path, "a")
+    stream = sys.stderr if path == "-" else open(path, "a")
     logging.basicConfig(format=format, level="DEBUG", stream=stream)
     logging.debug("Session started")
 
@@ -1228,12 +1432,12 @@ if __name__ == "__main__":
     ap.add_argument("-r", "--render", metavar="PATH", default=None, help="render raw html message and quit")
     args = ap.parse_args()
 
+    setup_logging(args.logfile)
+
     if (path := args.render) is not None:
         with open(path) as fp:
-            print("\n".join(parse_html(sanitize_text(fp.read()))))
+            print(html_render(fp.read()))
         sys.exit(0)
-
-    setup_logging(args.logfile)
 
     try:
         db = db_init(args.db)
