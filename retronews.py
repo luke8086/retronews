@@ -1014,6 +1014,9 @@ def hn_fetch_thread(entry_id: Union[str, int]) -> Message:
 def lb_parse_thread(thread: LBThread) -> Message:
     comments = {}
 
+    thread_body = f"{thread['description']}"
+    thread_body = f"<p>{thread['url']}</p>{thread_body}" if thread["url"] else thread_body
+
     ret = Message(
         msg_id=f"{thread['short_id']}@lb",
         thread_id=f"{thread['short_id']}@lb",
@@ -1021,7 +1024,7 @@ def lb_parse_thread(thread: LBThread) -> Message:
         date=datetime.fromtimestamp(datetime.fromisoformat(thread["created_at"]).timestamp()),
         author=thread["submitter_user"]["username"],
         title=thread["title"],
-        body=f"<p>{thread['url']}</p>{thread['description']}",
+        body=thread_body,
         total_comments=thread["comment_count"] + 1,
     )
 
