@@ -145,6 +145,9 @@ QUOTE_REX = re.compile(r"^(> ?)+")
 # Recognize "[n] link", "[n]: link", "[n] - link", etc.
 REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 
+# Recognize http/https URLs
+URL_REX = re.compile(r"(https?://[^\s\),]+)")
+
 # FIXME: Use TypeAlias after migrating to Python 3.10
 Window = NewType("Window", "curses._CursesWindow")
 DB = NewType("DB", "sqlite3.Connection")
@@ -423,6 +426,10 @@ def text_sanitize(text: Optional[str]) -> str:
     return text
 
 
+def text_split_urls(text: str) -> list[str]:
+    return [p for p in URL_REX.split(text) if p != ""]
+
+
 def html_node_children(parent: HTMLNode) -> list[HTMLNode]:
     ret: list[HTMLNode] = []
     node = parent.first_child
@@ -516,7 +523,7 @@ def html_node_process_inline(node: HTMLNode, inline=False) -> str:
             # Workaround for link formatting on HN
             text = href
         elif text != href:
-            text += " " + href
+            text = f"{text} {href}"
 
     node.tag = "text"
     node.text = text
@@ -1311,11 +1318,10 @@ def app_render_pager_line(app: AppState, row: int, line: str) -> None:
     app.screen.clrtoeol()
     app.screen.move(row, 0)
 
-    for word in line.split(" "):
-        is_url = word.startswith("http://") or word.startswith("https://")
-        word_attr = app.colors["url"] if is_url and line_attr == 0 else line_attr
-        app.screen.addstr(word, word_attr)
-        app.screen.addstr(" ")
+    for part in text_split_urls(line):
+        is_url = URL_REX.fullmatch(part)
+        part_attr = app.colors["url"] if is_url and line_attr == 0 else line_attr
+        app.screen.addstr(part, part_attr)
 
 
 def app_render_pager(app: AppState) -> None:
