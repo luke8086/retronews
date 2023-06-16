@@ -1346,7 +1346,7 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
         return app.colors["code"]
     elif line == "~":
         return app.colors["empty_pager_line"]
-    elif line == "<deleted>":
+    elif line == "<deleted>" or line == "[dead]":
         return app.colors["deleted_message_pager_line"]
     else:
         return 0
