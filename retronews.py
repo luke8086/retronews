@@ -409,12 +409,11 @@ def text_wrap(text: str, width=70) -> str:
     return "\n".join(lines)
 
 
-def text_indent(text: str, initial: str, recurring: Optional[str] = None) -> str:
-    if recurring is None:
-        recurring = initial
-
+def text_unindent(text: str) -> str:
     lines = text.split("\n")
-    lines = [(initial + lines[0]).rstrip()] + [(recurring + line).rstrip() for line in lines[1:]]
+
+    while all(line.startswith(" ") or line == "" for line in lines):
+        lines = [line[1:] for line in lines]
 
     return "\n".join(lines)
 
@@ -587,11 +586,14 @@ def html_node_render_block(node: HTMLNode, width=70) -> str:
     text = "\n".join(parts)
 
     if node.tag == "blockquote":
-        text = text_indent(text, "> ")
+        text = "\n".join((">" if line.startswith("> ") else "> ") + line for line in text.split("\n"))
     elif node.tag == "pre":
-        text = text_indent(text, "| ")
+        text = text_unindent(text)
+        text = "\n".join("| " + line for line in text.split("\n"))
     elif node.tag == "li":
-        text = text_indent(text, "- ", "  ")
+        lines = text.split("\n")
+        lines = [("- " + lines[0]).rstrip()] + [("  " + line).rstrip() for line in lines[1:]]
+        text = "\n".join(lines)
 
     return text
 

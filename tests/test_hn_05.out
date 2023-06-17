@@ -1,16 +1,16 @@
 Lorem ipsum dolor sit amet, pro eu soleat civibus. Mel quas sensibus
 te. Noster nominati recteque no has.
 
-|     def hello():
-|         print('Hello World')
-|         return None
+| def hello():
+|     print('Hello World')
+|     return None
 
 Lorem ipsum dolor sit amet, pro eu soleat civibus. Mel quas sensibus
 te. Noster nominati recteque no has.
 
-|     def hello():
-|         print('Hello World')
-|         return None
+| def hello():
+|     print('Hello World')
+|     return None
 
 Lorem ipsum dolor sit amet, pro eu soleat civibus. Mel quas sensibus
 te. Noster nominati recteque no has.
