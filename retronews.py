@@ -1244,21 +1244,24 @@ def app_show_help_screen(app: AppState) -> None:
 
 
 def app_show_links_screen(app: AppState) -> None:
-    app.screen.erase()
-    app.screen.addstr(0, 0, "Select link to open:")
-    app.screen.refresh()
-
     lines = app.selected_message.lines if app.selected_message is not None else []
 
-    keys = "1234567890abcdefghij"
+    # Max amount of keys is 21 to fit on 25-line terminals
+    keys = "1234567890abcdefghijk"
     urls = URL_REX.findall(" ".join(lines))
     items = dict(zip((ord(k) for k in keys), urls))
 
     if len(items) == 0:
         return app_show_flash(app, "No links available for opening")
 
+    app.screen.erase()
+    app.screen.addstr(0, 0, "Select link to open:")
+
     for (i, (key, url)) in enumerate(items.items()):
         app.screen.addstr(i + 2, 0, f"{chr(key)} - {url}")
+
+    app.screen.addstr(i + 4, 0, "To change browser run: BROWSER='firefox %s' ./retronews.py")
+    app.screen.refresh()
 
     key = app.screen.getch()
 
