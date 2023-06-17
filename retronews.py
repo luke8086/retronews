@@ -52,6 +52,7 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
     ord("x"): lambda app: cmd_close(app),
     ord("s"): lambda app: cmd_star(app),
     ord("S"): lambda app: cmd_star_thread(app),
+    ord("u"): lambda app: cmd_set_unread(app),
     ord("D"): lambda app: cmd_dump(app),
     ord("r"): lambda app: cmd_toggle_raw_mode(app),
     ord("k"): lambda app: cmd_up(app),
@@ -79,7 +80,6 @@ HELP_SCREEN = """\
 Available commands:
 
   q                       Quit retronews
-  ?                       Show this help message
   UP, DOWN                Go up / down by one message / pager line
   PG UP, PG DOWN          Gp up / down by one page of messages / pager lines
   p, n                    Go to previous / next message
@@ -94,8 +94,9 @@ Available commands:
   < >                     Go to previous / next page
   g                       Go to specific page
   k j                     Scroll pager up / down by one line
-  s                       Star / unstar selected message
+  s                       Star / unstar current message
   S                       Star / unstar current thread
+  u                       Mark current message as unread
   r                       Toggle raw HTML mode
 
 See https://github.com/luke8086/retronews for more information.
@@ -800,6 +801,13 @@ def cmd_star_thread(app: AppState) -> None:
     thread_msg.flags.starred = not thread_msg.flags.starred
     db_save_message(app.db, thread_msg)
     cmd_next(app)
+
+
+def cmd_set_unread(app: AppState) -> None:
+    if (msg := app.selected_message) is not None:
+        msg.flags.read = False
+        db_save_message(app.db, msg)
+        cmd_next(app)
 
 
 def cmd_dump(app: AppState) -> None:
