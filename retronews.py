@@ -1403,6 +1403,8 @@ def app_render_middle_menu(app: AppState) -> None:
     text = f"--({unread}/{total} unread)"
     if thread_message.flags.starred:
         text += "--(starred thread)"
+    if app.raw_mode:
+        text += "--(raw mode on)"
     text = text[:cols].ljust(cols, "-")
 
     app.screen.insstr(row, 0, text, app.colors["menu"] | curses.A_BOLD)
