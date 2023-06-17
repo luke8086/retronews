@@ -89,7 +89,7 @@ Available commands:
   RETURN, SPACE           Open selected message
   x                       Close current message / thread
   o                       Select link and open in browser
-  1 - 5                   Change group
+  1 - 9                   Change group
   R                       Refresh current page
   < >                     Go to previous / next page
   g                       Go to specific page
@@ -181,7 +181,8 @@ GROUP_TABS: list[Group] = [
     Group(label="New HN", fetch=lambda db, page: hn_fetch_new_threads(page)),
     Group(label="Ask HN", fetch=lambda db, page: hn_fetch_threads("ask", page)),
     Group(label="Show HN", fetch=lambda db, page: hn_fetch_threads("show", page)),
-    Group(label="Lobsters", fetch=lambda db, page: lb_fetch_threads("", page)),
+    Group(label="Front LB", fetch=lambda db, page: lb_fetch_threads("", page)),
+    Group(label="New LB", fetch=lambda db, page: lb_fetch_threads("newest", page)),
     Group(label="Starred", fetch=lambda db, page: group_fetch_starred_threads(db, page)),
 ]
 
@@ -1050,7 +1051,8 @@ def lb_parse_thread(thread: LBThread) -> Message:
 
 
 def lb_fetch_threads(group: str = "", page: int = 1) -> list[Message]:
-    resp = fetch(f"https://lobste.rs/page/{page}.json")
+    group_path = f"{group}/" if group else ""
+    resp = fetch(f"https://lobste.rs/{group_path}page/{page}.json")
     threads: list[LBThread] = json.loads(resp)
 
     return [lb_parse_thread(thread) for thread in threads]
