@@ -1353,7 +1353,9 @@ def app_get_pager_line_attr(app: AppState, line: str) -> int:
 
 
 def app_render_pager_line(app: AppState, row: int, line: str) -> None:
-    line_attr = app_get_pager_line_attr(app, line)
+    hl_lines = not app.raw_mode
+    line_attr = app_get_pager_line_attr(app, line) if hl_lines else 0
+    hl_urls = line_attr == 0 and hl_lines
 
     app.screen.move(row, 0)
     app.screen.clrtoeol()
@@ -1361,7 +1363,7 @@ def app_render_pager_line(app: AppState, row: int, line: str) -> None:
 
     for part in text_split_urls(line):
         is_url = URL_REX.fullmatch(part)
-        part_attr = app.colors["url"] if is_url and line_attr == 0 else line_attr
+        part_attr = app.colors["url"] if is_url and hl_urls else line_attr
         app.screen.addstr(part, part_attr)
 
 
