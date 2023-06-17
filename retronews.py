@@ -132,7 +132,7 @@ COLORS: dict[Color, tuple[int, int]] = {
     "deleted_message_pager_line": (curses.COLOR_RED, -1),
     "menu": (curses.COLOR_GREEN, curses.COLOR_BLUE),
     "menu_active": (curses.COLOR_YELLOW, curses.COLOR_BLUE),
-    "nested_quote": (curses.COLOR_BLUE, -1),
+    "nested_quote": (curses.COLOR_CYAN, -1),
     "quote": (curses.COLOR_YELLOW, -1),
     "starred_subject": (curses.COLOR_CYAN, -1),
     "header_subject": (curses.COLOR_GREEN, -1),
