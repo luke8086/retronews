@@ -205,16 +205,12 @@ class Message:
     body: Optional[str] = None
     lines: list[str] = dataclasses.field(default_factory=list)
     parent: Optional["Message"] = None
-    children: list["Message"] = dataclasses.field(default_factory=list)
+    children: Optional[list["Message"]] = None
     flags: MessageFlags = dataclasses.field(default_factory=MessageFlags)
     read_comments: int = 0
     total_comments: int = 0
     index_position: int = 0
     index_tree: str = ""
-
-    @property
-    def is_loaded(self) -> bool:
-        return self.body is not None
 
     @property
     def is_read(self) -> bool:
@@ -223,7 +219,7 @@ class Message:
     @property
     def is_shown_as_read(self) -> bool:
         # If the message is an unloaded thread, check if all comments are read
-        return self.read_comments >= self.total_comments if self.is_thread and not self.is_loaded else self.is_read
+        return self.read_comments >= self.total_comments if self.is_thread and self.children is None else self.is_read
 
     @property
     def is_thread(self) -> bool:
@@ -913,10 +909,12 @@ def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = Fal
     msg.index_tree = "" if msg.is_thread else f"{prefix}{'└─' if is_last_child else '├─'}> "
     yield msg
 
-    child_count = len(msg.children)
+    children = msg.children or []
+
+    child_count = len(children)
     child_prefix = "" if msg.is_thread else f"{prefix}{'  ' if is_last_child else '│ '}"
 
-    for i, child_node in enumerate(msg.children):
+    for i, child_node in enumerate(children):
         child_is_last = i == child_count - 1
         for child in msg_flatten_thread(child_node, prefix=child_prefix, is_last_child=child_is_last):
             yield child
@@ -948,7 +946,7 @@ def msg_build_lines(msg: Message) -> list[str]:
 
 
 def msg_unload(msg: Message) -> Message:
-    msg.children = []
+    msg.children = None
     msg.body = None
     return msg
 
@@ -1036,6 +1034,7 @@ def lb_parse_thread(thread: LBThread) -> Message:
         author=thread["submitter_user"]["username"],
         title=thread["title"],
         body=thread_body,
+        children=None if thread.get("comments") is None else [],
         total_comments=thread["comment_count"] + 1,
     )
 
@@ -1055,7 +1054,8 @@ def lb_parse_thread(thread: LBThread) -> Message:
         msg = comments[comment["short_id"]]
         parent_msg = comments[comment["parent_comment"]] if comment["parent_comment"] else ret
         msg.parent = parent_msg
-        parent_msg.children.append(msg)
+        if parent_msg.children is not None:
+            parent_msg.children.append(msg)
 
     return ret
 
