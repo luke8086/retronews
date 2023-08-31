@@ -994,15 +994,17 @@ def hn_fetch_threads_by_id(thread_ids: list[str]) -> list[Message]:
     story_tags = ",".join(f"story_{x}" for x in thread_ids)
     url = f"https://hn.algolia.com/api/v1/search_by_date?hitsPerPage={len(thread_ids)}&tags=story,({story_tags})"
     hits = json.loads(fetch(url))["hits"]
+    hits_by_id = {hit["objectID"]: hit for hit in hits}
+    threads = [hn_parse_search_hit(hits_by_id[tid]) for tid in thread_ids if tid in hits_by_id]
 
-    return [hn_parse_search_hit(hit) for hit in hits]
+    return threads
 
 
 def hn_fetch_threads(group: str = "news", page: int = 1) -> list[Message]:
     rex = re.compile(r'href="item\?id=(\d+)"')
 
     html = fetch(f"https://news.ycombinator.com/{group}?p={page}")
-    thread_ids = list(set(match.group(1) for match in rex.finditer(html)))
+    thread_ids = list(dict.fromkeys(match.group(1) for match in rex.finditer(html)))
 
     return hn_fetch_threads_by_id(thread_ids)
 
