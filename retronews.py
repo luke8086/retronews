@@ -152,6 +152,9 @@ REFERENCE_REX = re.compile(r"^\[\d+\][ :-]*https?://[^ ]*$")
 # Recognize http/https URLs
 URL_REX = re.compile(r"(https?://[^\s\)\"<,]+[^\s\)\"<,\.])")
 
+# Recognize HN message URLs
+HN_URL_REX = re.compile(r"^https://news\.ycombinator\.com/item\?id=(\d+)$")
+
 # FIXME: Use TypeAlias after migrating to Python 3.10
 Window = NewType("Window", "curses._CursesWindow")
 DB = NewType("DB", "sqlite3.Connection")
@@ -1115,6 +1118,15 @@ def group_fetch_thread(thread_id: str) -> Message:
     return fetchers[provider](source_id)
 
 
+def group_for_msg_url(url: str) -> Group:
+    if (match := HN_URL_REX.match(url)) is not None:
+        msg_id = match[1]
+        return Group(label="", fetch=lambda *x: hn_fetch_threads_by_id([msg_id]))
+
+    msg = "Unknown URL, available patterns: \n" + "\n".join(f"- {r.pattern}" for r in [HN_URL_REX])
+    raise ExitException(1, msg)
+
+
 def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Optional[T]:
     if flash is not None:
         app_show_flash(app, flash)
@@ -1461,11 +1473,9 @@ def app_init_colors(app: AppState) -> None:
         app.colors[name] = curses.color_pair(i + 1)
 
 
-def app_main(screen: Window, db: DB, initial_tab: int) -> int:
+def app_main(screen: Window, db: DB, group: Group) -> int:
     curses.curs_set(0)
     curses.use_default_colors()
-
-    group = GROUP_TABS[initial_tab - 1]
 
     app = AppState(screen=screen, db=db, group=group)
     app_init_colors(app)
@@ -1498,6 +1508,7 @@ if __name__ == "__main__":
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
     ap.add_argument("-t", "--tab", metavar="TAB", type=int, default=1, choices=tab_choices, help="initial tab")
     ap.add_argument("-r", "--render", metavar="PATH", default=None, help="render raw html message and quit")
+    ap.add_argument("-m", "--msg", metavar="URL", default=None, help="render message from URL")
     args = ap.parse_args()
 
     setup_logging(args.logfile)
@@ -1509,7 +1520,13 @@ if __name__ == "__main__":
 
     try:
         db = db_init(args.db)
-        ret = curses.wrapper(app_main, db, args.tab)
+
+        if args.msg:
+            group = group_for_msg_url(args.msg)
+        else:
+            group = GROUP_TABS[args.tab - 1]
+
+        ret = curses.wrapper(app_main, db, group)
     except ExitException as e:
         if e.message:
             sys.stderr.write(e.message + "\n")
