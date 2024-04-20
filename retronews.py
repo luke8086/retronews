@@ -287,10 +287,6 @@ class HNEntry(TypedDict):
     url: Optional[str]
 
 
-class LBUser(TypedDict):
-    username: str
-
-
 class LBThread(TypedDict):
     short_id: str
     short_id_url: str
@@ -298,7 +294,7 @@ class LBThread(TypedDict):
     title: str
     url: str
     description: str
-    submitter_user: LBUser
+    submitter_user: str
     comment_count: int
     comments: Optional[list[Any]]
 
@@ -307,7 +303,7 @@ class LBComment(TypedDict):
     short_id: str
     created_at: str
     url: str
-    commenting_user: LBUser
+    commenting_user: str
     parent_comment: Optional[str]
 
 
@@ -1037,7 +1033,7 @@ def lb_parse_thread(thread: LBThread) -> Message:
         thread_id=f"{thread['short_id']}@lb",
         content_location=thread["short_id_url"],
         date=datetime.fromtimestamp(datetime.fromisoformat(thread["created_at"]).timestamp()),
-        author=thread["submitter_user"]["username"],
+        author=thread["submitter_user"],
         title=thread["title"],
         body=thread_body,
         children=None if thread.get("comments") is None else [],
@@ -1050,7 +1046,7 @@ def lb_parse_thread(thread: LBThread) -> Message:
             thread_id=f"{thread['short_id']}@lb",
             content_location=comment["url"],
             date=datetime.fromtimestamp(datetime.fromisoformat(comment["created_at"]).timestamp()),
-            author=comment["commenting_user"]["username"],
+            author=comment["commenting_user"],
             title=f"Re: {thread['title']}",
             body=comment["comment"],
             children=[],
