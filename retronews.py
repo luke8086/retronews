@@ -23,6 +23,7 @@ import logging
 import os
 import re
 import sqlite3
+import traceback
 import unicodedata
 import urllib.request
 import webbrowser
@@ -1136,6 +1137,7 @@ def app_safe_run(app: AppState, fn: Callable[[], T], flash: Optional[str]) -> Op
     try:
         ret = fn()
     except Exception as e:
+        logging.debug("\n".join(traceback.format_exception(e)))
         app_show_flash(app, f"Error: {e}")
     else:
         if flash is not None:
