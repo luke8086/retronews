@@ -13,7 +13,7 @@ $ python3 ./retronews.py
 
 Press `?` to see available keybindings.
 
-For rationale, see the corresponding [blog post](https://luke8086.neocities.org/retronews.html)
+For rationale, see the corresponding [blog post](https://luke8086.dev/retronews.html)
 
 <img src="screenshot.png" width="600" />
 
