@@ -631,13 +631,11 @@ def fetch(url: str) -> str:
 
 
 @overload
-def list_get(lst: list[T], index: int, default: T) -> T:
-    ...
+def list_get(lst: list[T], index: int, default: T) -> T: ...
 
 
 @overload
-def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[T]:
-    ...
+def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[T]: ...
 
 
 def list_get(lst, index, default=None):
@@ -1090,7 +1088,7 @@ def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
     threads_by_provider: dict[str, list[str]] = {}
     threads = []
 
-    for (source_id, provider) in (t.split("@") for t in thread_ids):
+    for source_id, provider in (t.split("@") for t in thread_ids):
         threads_by_provider.setdefault(provider, list()).append(source_id)
 
     for provider, thread_ids in threads_by_provider.items():
@@ -1269,7 +1267,7 @@ def app_show_links_screen(app: AppState) -> None:
     app.screen.erase()
     app.screen.addstr(0, 0, "Select link to open:")
 
-    for (i, (key, url)) in enumerate(items.items()):
+    for i, (key, url) in enumerate(items.items()):
         app.screen.addstr(i + 2, 0, f"{chr(key)} - {url}")
 
     app.screen.addstr(i + 4, 0, "To change browser run: BROWSER='firefox %s' ./retronews.py")
@@ -1443,7 +1441,7 @@ def app_render_bottom_menu(app: AppState) -> None:
     app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors["menu"])
     app.screen.move(lt.bottom_menu_row, 0)
 
-    for (i, group) in enumerate(GROUP_TABS):
+    for i, group in enumerate(GROUP_TABS):
         is_active = group.label == app.group.label
         color = app.colors["menu_active"] if is_active else app.colors["menu"]
         attr = color | curses.A_BOLD
@@ -1466,7 +1464,7 @@ def app_render(app: AppState) -> None:
 
 
 def app_init_colors(app: AppState) -> None:
-    for (i, (name, (fg, bg))) in enumerate(COLORS.items()):
+    for i, (name, (fg, bg)) in enumerate(COLORS.items()):
         curses.init_pair(i + 1, fg, bg)
         app.colors[name] = curses.color_pair(i + 1)
 
