@@ -31,6 +31,7 @@ from datetime import datetime
 from functools import partial, reduce
 from textwrap import wrap
 from typing import (
+    TYPE_CHECKING,
     Any,
     Callable,
     Generator,
@@ -157,8 +158,14 @@ URL_REX = re.compile(r"(https?://[^\s\)\"<,]+[^\s\)\"<,\.])")
 HN_URL_REX = re.compile(r"^https://news\.ycombinator\.com/item\?id=(\d+)$")
 
 # FIXME: Use TypeAlias after migrating to Python 3.10
-Window = NewType("Window", "curses._CursesWindow")
 DB = NewType("DB", "sqlite3.Connection")
+
+if TYPE_CHECKING:
+    from _curses import _CursesWindow
+
+    Window = _CursesWindow
+else:
+    Window = Any
 
 T = TypeVar("T")
 
