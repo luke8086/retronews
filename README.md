@@ -8,11 +8,10 @@ It was primarily written so I could highlight interesting threads and keep
 track of read / unread messages (see [blog post](https://luke8086.dev/retronews.html)).
 The UI showing one message at a time also encourages slower, more focused reading.
 
-On Unix-like systems it only depends on Python 3.9 and doesn't require installation.
-On Windows you may need to install [windows-curses](https://pypi.org/project/windows-curses/)
-first.
+On Unix-like systems it only depends on Python 3.9. On Windows you may also need
+to install [windows-curses](https://pypi.org/project/windows-curses/).
 
-You can run it simply with:
+It doesn't require installation. You can run it simply with:
 
 ```bash
 $ curl -LO https://raw.githubusercontent.com/luke8086/retronews/main/retronews.py
