@@ -1501,12 +1501,23 @@ def setup_logging(path: Optional[str]) -> None:
     logging.debug("Session started")
 
 
+def run_rcfile(path: str) -> None:
+    path = os.path.expanduser(path)
+
+    if not os.path.isfile(path):
+        return
+
+    code = compile(open(path).read(), path, "exec")
+    exec(code, {"retronews": sys.modules[__name__]})
+
+
 if __name__ == "__main__":
     tab_choices = range(1, len(GROUP_TABS) + 1)
 
     ap = argparse.ArgumentParser(
         formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
     )
+    ap.add_argument("-c", "--rcfile", metavar="PATH", default="~/.retronewsrc.py", help="optional startup code path")
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
     ap.add_argument("-t", "--tab", metavar="TAB", type=int, default=1, choices=tab_choices, help="initial tab")
@@ -1515,6 +1526,7 @@ if __name__ == "__main__":
     args = ap.parse_args()
 
     setup_logging(args.logfile)
+    run_rcfile(args.rcfile)
 
     if (path := args.render) is not None:
         with open(path) as fp:

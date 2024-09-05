@@ -22,6 +22,24 @@ Press `?` to see available keybindings.
 
 <img src="screenshot.png" width="600" />
 
+## Customization
+
+To customize retronews without directly editing the script, you can put any valid
+Python code in `~/.retronewsrc.py` (or other location specified with `--rcfile`) to
+be executed on startup. For example:
+
+```python
+# Ignore type warnings
+from typing import Any
+retronews: Any
+
+# Example: Custom key bindings
+retronews.KEY_BINDINGS[ord('a')] = lambda app: retronews.cmd_prev(app)
+retronews.KEY_BINDINGS[ord('z')] = lambda app: retronews.cmd_next(app)
+
+# Example: Custom colors
+retronews.COLORS['author'] = (retronews.curses.COLOR_RED, -1)
+```
 
 ## Known issues and limitations
 
@@ -29,8 +47,6 @@ Press `?` to see available keybindings.
 - Message formatting is not perfect, but works well enough most of the time
 - Detecting if threads contain unread responses works by only checking their
   count, it's not reliable if any responses were deleted
-- No config file is planned, since the code is in Python, it's simpler to
-  treat it as its own config and customize directly
 
 ## Why not an NNTP gateway?
 
