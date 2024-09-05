@@ -182,6 +182,24 @@ class ExitException(Exception):
 
 
 @dataclasses.dataclass(frozen=True)
+class Provider:
+    fetch_thread: Callable[[str], "Message"]
+    fetch_threads_by_id: Callable[[list[str]], list["Message"]]
+
+
+PROVIDERS: dict[str, Provider] = {
+    "hn": Provider(
+        fetch_thread=lambda msg_id: hn_fetch_thread(msg_id),
+        fetch_threads_by_id=lambda msg_ids: hn_fetch_threads_by_id(msg_ids),
+    ),
+    "lb": Provider(
+        fetch_thread=lambda msg_id: lb_fetch_thread(msg_id),
+        fetch_threads_by_id=lambda msg_ids: [lb_fetch_thread(x) for x in msg_ids],
+    ),
+}
+
+
+@dataclasses.dataclass(frozen=True)
 class Group:
     label: str
     fetch: Callable[[DB, int], list["Message"]]
@@ -1092,18 +1110,15 @@ def group_advance_page(group: Group, offset: int = 1) -> Group:
 
 def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
     thread_ids = db_load_starred_thread_ids(db, page)
-    threads_by_provider: dict[str, list[str]] = {}
+    threads_by_provider_id: dict[str, list[str]] = {}
     threads = []
 
-    for source_id, provider in (t.split("@") for t in thread_ids):
-        threads_by_provider.setdefault(provider, list()).append(source_id)
+    for source_id, provider_id in (t.split("@") for t in thread_ids):
+        threads_by_provider_id.setdefault(provider_id, list()).append(source_id)
 
-    for provider, thread_ids in threads_by_provider.items():
-        if provider == "hn":
-            threads += hn_fetch_threads_by_id(thread_ids)
-        elif provider == "lb":
-            # FIXME: Find way to fetch multiple threads by id at once
-            threads += [lb_fetch_thread(x) for x in thread_ids]
+    for provider_id, thread_ids in threads_by_provider_id.items():
+        provider = PROVIDERS[provider_id]
+        threads += provider.fetch_threads_by_id(thread_ids)
 
     threads.sort(key=lambda x: x.date, reverse=True)
 
@@ -1111,13 +1126,10 @@ def group_fetch_starred_threads(db: DB, page: int = 1) -> list[Message]:
 
 
 def group_fetch_thread(thread_id: str) -> Message:
-    fetchers = {
-        "hn": hn_fetch_thread,
-        "lb": lb_fetch_thread,
-    }
-    (source_id, provider) = thread_id.split("@")
+    (msg_id, provider_id) = thread_id.split("@")
+    provider = PROVIDERS[provider_id]
 
-    return fetchers[provider](source_id)
+    return provider.fetch_thread(msg_id)
 
 
 def group_for_msg_url(url: str) -> Group:
