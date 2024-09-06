@@ -80,8 +80,6 @@ KEY_BINDINGS: dict[int, Callable[["AppState"], None]] = {
 HELP_MENU = "q:Quit  ?:Help  p:Prev  n:Next  N:Next-Unread  j:Down  k:Up  x:Close  s:Star"
 
 HELP_SCREEN = """\
-Available commands:
-
   q                       Quit retronews
   UP, DOWN                Go up / down by one message / pager line
   PG UP, PG DOWN          Gp up / down by one page of messages / pager lines
@@ -102,9 +100,7 @@ Available commands:
   u                       Mark current message as unread
   r                       Toggle raw HTML mode
 
-See https://github.com/luke8086/retronews for more information.
-
-Press any key to continue..."""
+See https://github.com/luke8086/retronews for more information."""
 
 Color = Literal[
     "author",
@@ -677,6 +673,11 @@ def list_get(lst: list[T], index: int, default: Optional[T] = None) -> Optional[
 
 def list_get(lst, index, default=None):
     return lst[index] if 0 <= index < len(lst) else default
+
+
+def list_chunk(lst: list[T], size: int) -> list[list[T]]:
+    # Flake8 conflicts with Black here - https://github.com/PyCQA/pycodestyle/issues/373
+    return [lst[i : i + size] for i in range(0, len(lst), size)]  # noqa: E203
 
 
 def cmd_quit(_: AppState):
@@ -1269,8 +1270,8 @@ def app_update_layout(app: AppState) -> None:
 
     (lt.lines, lt.cols) = app.screen.getmaxyx()
 
-    if lt.lines < 25 or lt.cols < 80:
-        raise ExitException(1, "At least 80x25 terminal is required")
+    if lt.lines < 12 or lt.cols < 80:
+        raise ExitException(1, "At least 80x12 terminal is required")
 
     max_index_height = lt.lines - 3
     lt.index_height = (max_index_height // 3) if app.pager_visible else max_index_height
@@ -1284,10 +1285,18 @@ def app_update_layout(app: AppState) -> None:
 
 
 def app_show_help_screen(app: AppState) -> None:
-    app.screen.erase()
-    app.screen.addstr(0, 0, HELP_SCREEN)
-    app.screen.refresh()
-    app.screen.getch()
+    max_lines = app.layout.lines - 4
+
+    help_lines = HELP_SCREEN.split("\n")
+    help_pages = ["\n".join(lines) for lines in list_chunk(help_lines, max_lines)]
+
+    for page in help_pages:
+        app.screen.erase()
+        app.screen.addstr(0, 0, "Available commands:\n\n")
+        app.screen.addstr(page)
+        app.screen.addstr("\n\nPress any key to continue...")
+        app.screen.refresh()
+        app.screen.getch()
 
 
 def app_show_links_screen(app: AppState) -> None:
