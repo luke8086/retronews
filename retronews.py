@@ -944,11 +944,11 @@ def db_load_starred_thread_ids(db: DB, page: int = 1) -> list[str]:
 def msg_flatten_thread(
     msg: Message, prefix: str = "", is_last_child: bool = False, ascii: bool = False
 ) -> Generator[Message, None, None]:
-    brcorner = "'-" if ascii else "└─"
+    blcorner = "'-" if ascii else "└─"
     ltee = "|-" if ascii else "├─"
     vline = "| " if ascii else "│ "
 
-    msg.index_tree = "" if msg.is_thread else f"{prefix}{brcorner if is_last_child else ltee}> "
+    msg.index_tree = "" if msg.is_thread else f"{prefix}{blcorner if is_last_child else ltee}> "
     yield msg
 
     children = msg.children or []
