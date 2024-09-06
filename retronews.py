@@ -27,6 +27,7 @@ import traceback
 import unicodedata
 import urllib.request
 import webbrowser
+from collections import defaultdict
 from datetime import datetime
 from functools import partial, reduce
 from textwrap import wrap
@@ -278,6 +279,7 @@ class AppState:
     screen: Window
     db: DB
     group: Group
+    monochrome: bool = False
     colors: dict[Color, int] = dataclasses.field(default_factory=dict)
     messages: list[Message] = dataclasses.field(default_factory=list)
     messages_by_id: dict[str, Message] = dataclasses.field(default_factory=dict)
@@ -1347,7 +1349,8 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     app.screen.insstr(row, 0, f"[{date}]  [{author}]  [{unread}]  {message.index_tree}{title}")
 
     if is_selected:
-        app.screen.chgat(row, 0, cols, app.colors["cursor"])
+        cursor_attr = curses.A_REVERSE if app.monochrome else 0
+        app.screen.chgat(row, 0, cols, app.colors["cursor"] | cursor_attr)
     else:
         read_attr = 0 if message.is_shown_as_read else curses.A_BOLD
         subject_attr = app.colors["starred_subject"] if message.flags.starred else app.colors["default"]
@@ -1427,7 +1430,8 @@ def app_render_pager(app: AppState) -> None:
 def app_render_top_menu(app: AppState) -> None:
     lt = app.layout
     cols = lt.cols
-    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors["menu"] | curses.A_BOLD)
+    base_attr = curses.A_REVERSE if app.monochrome else curses.A_BOLD
+    app.screen.insstr(lt.top_menu_row, 0, HELP_MENU[:cols].ljust(cols), app.colors["menu"] | base_attr)
 
 
 def app_render_middle_menu(app: AppState) -> None:
@@ -1451,23 +1455,26 @@ def app_render_middle_menu(app: AppState) -> None:
         text += "--(raw mode on)"
     text = text[:cols].ljust(cols, "-")
 
-    app.screen.insstr(row, 0, text, app.colors["menu"] | curses.A_BOLD)
+    base_attr = curses.A_REVERSE if app.monochrome else curses.A_BOLD
+    app.screen.insstr(row, 0, text, app.colors["menu"] | base_attr)
 
 
 def app_render_bottom_menu(app: AppState) -> None:
     lt = app.layout
+    base_attr = curses.A_REVERSE if app.monochrome else curses.A_BOLD
 
-    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors["menu"])
+    app.screen.chgat(lt.bottom_menu_row, 0, lt.cols, app.colors["menu"] | base_attr)
     app.screen.move(lt.bottom_menu_row, 0)
 
     for i, group in enumerate(GROUP_TABS):
         is_active = group.label == app.group.label
-        color = app.colors["menu_active"] if is_active else app.colors["menu"]
-        attr = color | curses.A_BOLD
-        app.screen.addstr(f"{i+1}:{group.label}  ", attr)
+        item_attr = app.colors["menu_active"] | curses.A_BOLD if is_active else app.colors["menu"]
+        item_attr = item_attr | base_attr
+        app.screen.addstr(f"{i+1}:{group.label}", item_attr)
+        app.screen.addstr("  ", app.colors["menu"] | base_attr)
 
     page_text = f"page: {app.group.page}"
-    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors["menu"] | curses.A_BOLD)
+    app.screen.insstr(lt.bottom_menu_row, lt.cols - len(page_text), page_text, app.colors["menu"] | base_attr)
 
 
 def app_render(app: AppState) -> None:
@@ -1483,16 +1490,25 @@ def app_render(app: AppState) -> None:
 
 
 def app_init_colors(app: AppState) -> None:
-    for i, (name, (fg, bg)) in enumerate(COLORS.items()):
-        curses.init_pair(i + 1, fg, bg)
-        app.colors[name] = curses.color_pair(i + 1)
+    if app.monochrome:
+        app.colors = defaultdict(lambda: 0)
+        return
+
+    try:
+        curses.use_default_colors()
+        for i, (name, (fg, bg)) in enumerate(COLORS.items()):
+            curses.init_pair(i + 1, fg, bg)
+            app.colors[name] = curses.color_pair(i + 1)
+    except curses.error:
+        app.colors = defaultdict(lambda: 0)
+        app.monochrome = True
 
 
-def app_main(screen: Window, db: DB, group: Group) -> int:
+def app_main(screen: Window, db: DB, group: Group, monochrome: bool) -> int:
     curses.curs_set(0)
-    curses.use_default_colors()
 
-    app = AppState(screen=screen, db=db, group=group)
+    app = AppState(screen=screen, db=db, group=group, monochrome=monochrome)
+
     app_init_colors(app)
     app_load_group(app, app.group)
 
@@ -1529,6 +1545,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(
         formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
     )
+    ap.add_argument("--monochrome", action="store_true", help="disable colors")
     ap.add_argument("-c", "--rcfile", metavar="PATH", default="~/.retronewsrc.py", help="optional startup code path")
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
     ap.add_argument("-l", "--logfile", metavar="PATH", default=None, help="debug logfile path")
@@ -1553,7 +1570,9 @@ if __name__ == "__main__":
         else:
             group = GROUP_TABS[args.tab - 1]
 
-        ret = curses.wrapper(app_main, db, group)
+        monochrome = args.monochrome or "NO_COLOR" in os.environ
+
+        ret = curses.wrapper(app_main, db, group, monochrome)
     except ExitException as e:
         if e.message:
             sys.stderr.write(e.message + "\n")
