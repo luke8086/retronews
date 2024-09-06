@@ -279,6 +279,7 @@ class AppState:
     screen: Window
     db: DB
     group: Group
+    ascii: bool = False
     monochrome: bool = False
     colors: dict[Color, int] = dataclasses.field(default_factory=dict)
     messages: list[Message] = dataclasses.field(default_factory=list)
@@ -430,6 +431,15 @@ def text_wrap(text: str, width=70) -> str:
     lines = [line.rstrip() for line in lines]
 
     return "\n".join(lines)
+
+
+def text_clean(text: str, ascii: bool = False) -> str:
+    """Cleanup text for rendering, currently only removes non-ascii characters in ascii mode"""
+
+    if ascii:
+        text = text.encode("ascii", "replace").decode("ascii")
+
+    return text
 
 
 def text_unindent(text: str) -> str:
@@ -930,18 +940,24 @@ def db_load_starred_thread_ids(db: DB, page: int = 1) -> list[str]:
     return [row["thread_id"] for row in db.execute(sql, (page_size, offset))]
 
 
-def msg_flatten_thread(msg: Message, prefix: str = "", is_last_child: bool = False) -> Generator[Message, None, None]:
-    msg.index_tree = "" if msg.is_thread else f"{prefix}{'└─' if is_last_child else '├─'}> "
+def msg_flatten_thread(
+    msg: Message, prefix: str = "", is_last_child: bool = False, ascii: bool = False
+) -> Generator[Message, None, None]:
+    brcorner = "'-" if ascii else "└─"
+    ltee = "|-" if ascii else "├─"
+    vline = "| " if ascii else "│ "
+
+    msg.index_tree = "" if msg.is_thread else f"{prefix}{brcorner if is_last_child else ltee}> "
     yield msg
 
     children = msg.children or []
 
     child_count = len(children)
-    child_prefix = "" if msg.is_thread else f"{prefix}{'  ' if is_last_child else '│ '}"
+    child_prefix = "" if msg.is_thread else f"{prefix}{'  ' if is_last_child else vline}"
 
     for i, child_node in enumerate(children):
         child_is_last = i == child_count - 1
-        for child in msg_flatten_thread(child_node, prefix=child_prefix, is_last_child=child_is_last):
+        for child in msg_flatten_thread(child_node, prefix=child_prefix, is_last_child=child_is_last, ascii=ascii):
             yield child
 
 
@@ -1241,7 +1257,7 @@ def app_open_thread(app: AppState, thread_message: Message) -> None:
     app_close_thread(app)
 
     index_pos = thread_message.index_position
-    thread_messages = list(msg_flatten_thread(new_thread_message))
+    thread_messages = list(msg_flatten_thread(new_thread_message, ascii=app.ascii))
     new_thread_message.total_comments = len(thread_messages)
     messages = app.messages[:index_pos] + thread_messages + app.messages[index_pos + 1 :]  # noqa: E203
 
@@ -1340,7 +1356,7 @@ def app_render_index_row(app: AppState, row: int, message: Message) -> None:
     is_response = message.title.startswith("Re:") and not message.is_thread
     is_selected = message == app.selected_message
     hide_title = is_response and row > app.layout.index_start and not message.flags.starred and not is_selected
-    title = "" if hide_title else message.title
+    title = "" if hide_title else text_clean(message.title, ascii=app.ascii)
 
     unread = (
         str(max(min(message.total_comments - message.read_comments, 9999), 0)).rjust(4) if message.is_thread else "    "
@@ -1403,6 +1419,8 @@ def app_render_pager_line(app: AppState, row: int, line: str) -> None:
     hl_lines = not app.raw_mode
     line_attr = app_get_pager_line_attr(app, line) if hl_lines else 0
     hl_urls = line_attr == 0 and hl_lines
+
+    line = text_clean(line, ascii=app.ascii)
 
     app.screen.move(row, 0)
     app.screen.clrtoeol()
@@ -1504,10 +1522,10 @@ def app_init_colors(app: AppState) -> None:
         app.monochrome = True
 
 
-def app_main(screen: Window, db: DB, group: Group, monochrome: bool) -> int:
+def app_main(screen: Window, db: DB, group: Group, ascii: bool, monochrome: bool) -> int:
     curses.curs_set(0)
 
-    app = AppState(screen=screen, db=db, group=group, monochrome=monochrome)
+    app = AppState(screen=screen, db=db, group=group, ascii=ascii, monochrome=monochrome)
 
     app_init_colors(app)
     app_load_group(app, app.group)
@@ -1545,6 +1563,7 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(
         formatter_class=lambda prog: argparse.ArgumentDefaultsHelpFormatter(prog, max_help_position=32)
     )
+    ap.add_argument("--ascii", action="store_true", help="show only ascii characters")
     ap.add_argument("--monochrome", action="store_true", help="disable colors")
     ap.add_argument("-c", "--rcfile", metavar="PATH", default="~/.retronewsrc.py", help="optional startup code path")
     ap.add_argument("-d", "--db", metavar="PATH", default="~/.retronews.db", help="database path")
@@ -1570,9 +1589,10 @@ if __name__ == "__main__":
         else:
             group = GROUP_TABS[args.tab - 1]
 
+        ascii = args.ascii
         monochrome = args.monochrome or "NO_COLOR" in os.environ
 
-        ret = curses.wrapper(app_main, db, group, monochrome)
+        ret = curses.wrapper(app_main, db=db, group=group, ascii=ascii, monochrome=monochrome)
     except ExitException as e:
         if e.message:
             sys.stderr.write(e.message + "\n")
