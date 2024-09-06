@@ -1559,7 +1559,7 @@ if __name__ == "__main__":
             sys.stderr.write(e.message + "\n")
         ret = e.code
     except BaseException as e:
-        sys.stderr.write(str(e) + "\n")
+        sys.stderr.write("\n".join(traceback.format_exception(e)))
         ret = 1
     finally:
         db.close()
