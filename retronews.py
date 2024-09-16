@@ -716,39 +716,44 @@ def cmd_next_unread(app: AppState) -> None:
     if message is not None:
         app_select_message(app, message)
 
+
 def cmd_next_sibling(app: AppState) -> None:
-    if (msg := app.selected_message) is not None and (parent_msg := msg.parent) is not None:
+    if (msg := app.selected_message) and (parent_msg := msg.parent) and parent_msg.children:
         # find the next sibling
         try:
             idx = parent_msg.children.index(msg)
             if idx < len(parent_msg.children):
-                app_select_message(app, parent_msg.children[idx+1])
+                app_select_message(app, parent_msg.children[idx + 1])
         except IndexError:
             pass
 
+
 def cmd_prev_sibling(app: AppState) -> None:
-    if (msg := app.selected_message) is not None and (parent_msg := msg.parent) is not None:
+    if (msg := app.selected_message) and (parent_msg := msg.parent) and parent_msg.children:
         # find the previous sibling
         try:
             idx = parent_msg.children.index(msg)
             if idx > 0:
-                app_select_message(app, parent_msg.children[idx-1])
+                app_select_message(app, parent_msg.children[idx - 1])
         except IndexError:
             pass
+
 
 def cmd_mark_thread_as_read(app: AppState) -> None:
     # recursively mark us and all children as read
     # then jump to the next sibling
-    def iterate(message):
-        if message != None:
+    def iterate(message: Message):
+        if message.children:
             for child in message.children:
                 child.flags.read = True
-                db_save_message(app.db, msg)
+                db_save_message(app.db, child)
                 iterate(child)
+
     if (msg := app.selected_message) is not None:
         iterate(msg)
         # jump to the next sibling
         cmd_next_sibling(app)
+
 
 def cmd_parent(app: AppState) -> None:
     if (msg := app.selected_message) is not None and (parent_msg := msg.parent) is not None:
