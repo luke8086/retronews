@@ -1604,7 +1604,7 @@ def run_rcfile(path: str) -> None:
     exec(code, {"retronews": sys.modules[__name__]})
 
 
-if __name__ == "__main__":
+def main():
     tab_choices = range(1, len(GROUP_TABS) + 1)
 
     ap = argparse.ArgumentParser(
@@ -1650,3 +1650,7 @@ if __name__ == "__main__":
     finally:
         db.close()
         sys.exit(ret)
+
+
+if __name__ == "__main__":
+    main()

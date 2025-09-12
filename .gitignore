@@ -3,3 +3,10 @@
 /__pycache__
 /cache/*
 /tmp/*
+
+# Build artifacts
+/build/
+/dist/
+/*.egg-info/
+/.eggs/
+/wheels/

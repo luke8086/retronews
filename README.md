@@ -1,8 +1,3 @@
-# retronews
-
-A Python script for browsing [Hacker News](https://news.ycombinator.com/)
-and [Lobsters](https://lobste.rs/) discussions with a nostalgic interface emulating
-classical usenet and mail readers, like slrn and mutt.
 
 It was primarily written so I could highlight interesting threads and keep
 track of read / unread messages (see [blog post](https://luke8086.dev/retronews.html)).
@@ -16,6 +11,13 @@ It doesn't require installation. You can run it simply with:
 ```bash
 $ curl -LO https://raw.githubusercontent.com/luke8086/retronews/main/retronews.py
 $ python3 ./retronews.py
+```
+
+Or install it with [pipx](https://pypi.org/project/pipx/) to make it available system-wide:
+
+```bash
+$ pipx install git+https://github.com/luke8086/retronews.git
+$ retronews
 ```
 
 Press `?` to see available keybindings.
