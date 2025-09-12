@@ -18,6 +18,13 @@ $ curl -LO https://raw.githubusercontent.com/luke8086/retronews/main/retronews.p
 $ python3 ./retronews.py
 ```
 
+Or install it with [pipx](https://pypi.org/project/pipx/) to make it available system-wide:
+
+```bash
+$ pipx install git+https://github.com/luke8086/retronews.git
+$ retronews
+```
+
 Press `?` to see available keybindings.
 
 <img src="screenshot.png" width="600" />
