@@ -1,3 +1,8 @@
+# retronews
+
+A Python script for browsing [Hacker News](https://news.ycombinator.com/)
+and [Lobsters](https://lobste.rs/) discussions with a nostalgic interface emulating
+classical usenet and mail readers, like slrn and mutt.
 
 It was primarily written so I could highlight interesting threads and keep
 track of read / unread messages (see [blog post](https://luke8086.dev/retronews.html)).
